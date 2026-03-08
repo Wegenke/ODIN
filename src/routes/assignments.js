@@ -1,0 +1,31 @@
+const express = require('express')
+const {getAssignments, getMyAssignments, createAssignment, submitAssignment, approveAssignment, rejectAssignment, addComment, getComments, dismissAssignment, startAssignment, pauseAssignment, resumeAssignment, cancelAssignment, reassignAssignment, parentPauseAssignment, pauseAllActive, claimAssignment,getAvailableAssignments} = require('../controllers/assignmentController')
+const auth = require('../middleware/auth')
+const roleCheck = require('../middleware/roleCheck')
+const validate = require('../middleware/validate')
+const validateQuery = require('../middleware/validateQuery')
+const {createAssignmentSchema, rejectAssignmentSchema, addCommentSchema, reassignAssignmentSchema, optionalCommentSchema} = require('../validators/assignmentSchemas')
+
+const router = express.Router()
+router.get('/', auth, roleCheck('parent'), getAssignments)
+router.get('/mine', auth, roleCheck('child'), getMyAssignments)
+router.get('/available', auth, roleCheck('child'), getAvailableAssignments)
+router.post('/', auth, roleCheck('parent'), validate(createAssignmentSchema), createAssignment)
+router.patch('/pause-all-active', auth, roleCheck('parent'), validate(optionalCommentSchema), pauseAllActive)
+router.patch('/:id/parent-pause', auth, roleCheck('parent'), validate(optionalCommentSchema), parentPauseAssignment )
+router.patch('/:id/submit', auth, roleCheck('child'), validate(optionalCommentSchema), submitAssignment)
+router.patch('/:id/claim', auth, roleCheck('child'), claimAssignment)
+router.patch('/:id/approve', auth, roleCheck('parent'), approveAssignment)
+router.patch('/:id/reject', auth, roleCheck('parent'), validate(rejectAssignmentSchema),rejectAssignment)
+router.get('/:id/comments', auth, getComments)
+router.post('/:id/comments',auth, validate(addCommentSchema), addComment)
+router.patch('/:id/start', auth, roleCheck('child'), startAssignment)
+router.patch('/:id/pause', auth, roleCheck('child'), validate(optionalCommentSchema), pauseAssignment)
+router.patch('/:id/resume', auth, roleCheck('child'), validate(optionalCommentSchema), resumeAssignment)
+router.patch('/:id/dismiss', auth, roleCheck('parent'), validate(optionalCommentSchema), dismissAssignment)
+router.patch('/:id/cancel', auth, roleCheck('parent'), validate(optionalCommentSchema), cancelAssignment)
+router.patch('/:id/reassign', auth, roleCheck('parent'), validate(reassignAssignmentSchema), reassignAssignment)
+
+
+
+module.exports = router
