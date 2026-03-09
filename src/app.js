@@ -3,6 +3,8 @@ const cors = require('cors')
 const session = require('express-session')
 const helmet = require('helmet')
 const pgSession = require('connect-pg-simple')(session)
+const morgan = require('morgan')
+const db = require('./db')
 
 const { getSetupStatus,  setup } = require('./controllers/setupController')
 const authRouter = require('./routes/auth')
@@ -18,6 +20,8 @@ const { setupSchema } = require('./validators/setupSchemas')
 
 const app = express()
 
+app.locals.db = db
+
 app.use(helmet({
   // contentSecurityPolicy: false // Change if you see the browser blocking requests with a CSP error.
 }))
@@ -26,6 +30,7 @@ app.use(cors({
   credentials: true
 }))
 app.use(express.json())
+app.use(morgan('combined'))
 app.use(session({
   store: new pgSession({
     conObject: {
@@ -44,6 +49,7 @@ app.use(session({
     secure: false, //Set to true for Caddy migration
     httpOnly: true,
     sameSite: 'lax',
+    maxAge: 30*24*60*60*1000,
   }
 }))
 
@@ -55,7 +61,14 @@ app.use('/rewards', rewardRouter)
 app.use('/transactions', transactionRouter)
 app.use('/dashboard', dashboardRouter)
 
-app.get('/health', (request, response) => {response.json({status:'ok'})})
+app.get('/health', async (req, res) => {
+  try{
+    await req.app.locals.db.raw('SELECT 1')
+    res.json({status: 'ok', db: 'ok'})
+  }catch{
+    res.status(503).json({status: 'error', db: 'error'})
+  }
+})
 app.get('/setup', getSetupStatus)
 app.post('/setup', validate(setupSchema), setup)
 
