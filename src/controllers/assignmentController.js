@@ -173,6 +173,19 @@ const resumeAssignment = async (req,res) =>{
   }
 }
 
+const resumeRejectedAssignment = async (req,res) =>{
+  try{
+    const {id} = req.params
+    const child_id = req.session.user.id
+    const {comment} = req.body
+    const assignment = await assignmentService.resumeRejectedAssignment(id,child_id,comment)
+    return res.status(200).json(assignment)
+  }catch(err){
+    if(err.status) return res.status(err.status).json({message:err.message})
+  return res.status(500).json({message:"Server error"})
+  }
+}
+
 const cancelAssignment = async (req,res) =>{
   try{
     const {id} = req.params
@@ -229,4 +242,4 @@ const pauseAllActive = async (req,res) =>{
 
 
 
-module.exports = {getAssignments, getMyAssignments, createAssignment, submitAssignment, approveAssignment, rejectAssignment, addComment, getComments, dismissAssignment, startAssignment, pauseAssignment, resumeAssignment, cancelAssignment, reassignAssignment, parentPauseAssignment, pauseAllActive, claimAssignment, getAvailableAssignments}
+module.exports = {getAssignments, getMyAssignments, createAssignment, submitAssignment, approveAssignment, rejectAssignment, addComment, getComments, dismissAssignment, startAssignment, pauseAssignment, resumeAssignment, resumeRejectedAssignment, cancelAssignment, reassignAssignment, parentPauseAssignment, pauseAllActive, claimAssignment, getAvailableAssignments}

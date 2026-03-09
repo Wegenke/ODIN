@@ -9,6 +9,7 @@ const getAssignments = async (household_id) => {
       'chore_assignments.id',
       'chore_assignments.status',
       'chore_assignments.assigned_at',
+      'chore_assignments.submitted_at',
       'chore_assignments.completed_at',
       'chores.title as chore_title',
       'chores.points',
@@ -27,6 +28,7 @@ const getMyAssignments = async (child_id) => {
     'chore_assignments.id',
     'chore_assignments.status',
     'chore_assignments.assigned_at',
+    'chore_assignments.submitted_at',
     'chore_assignments.completed_at',
     'chores.title as chore_title',
     'chores.points',
@@ -102,12 +104,14 @@ const submitAssignment = async (id, child_id, comment) => {
 
   if(!assignment) throw Object.assign(new Error('Assignment not found'), {status: 404})
   if(assignment.child_id !== child_id) throw Object.assign(new Error('Not your assignment'), {status: 403})
-  if(assignment.status === 'dismissed') throw Object.assign(new Error('Cannot submit DISMISSED assignment'), {status: 400})
-  if(assignment.status !== 'assigned' && assignment.status !== 'rejected' && assignment.status !== 'in_progress' && assignment.status !== 'paused') throw Object.assign(new Error('Not in proper status [ASSIGNED,REJECTED,PAUSED,IN PROGRESS]'), {status: 400})
+  if(assignment.status !== 'assigned' && assignment.status !== 'in_progress' && assignment.status !== 'paused') throw Object.assign(new Error('Not in proper status [ASSIGNED,PAUSED,IN PROGRESS]'), {status: 400})
 
   const [updated_assignment] = await knex('chore_assignments')
     .where({id})
-    .update({status:'submitted'})
+    .update({
+      status:'submitted',
+      submitted_at:knex.fn.now()
+    })
     .returning('*')
 
   let assignment_comment = null
@@ -288,7 +292,7 @@ const startAssignment = async (id, child_id) => {
 
   if(!assignment) throw Object.assign(new Error('Assignment not found'), {status: 404})
   if(assignment.child_id !== child_id) throw Object.assign(new Error('Not your assignment'), {status: 403})
-  if(assignment.status !== 'assigned' && assignment.status !== 'rejected') throw Object.assign(new Error('Assignment status not ASSIGNED or REJECTED'), {status: 400})
+  if(assignment.status !== 'assigned') throw Object.assign(new Error('Assignment status not ASSIGNED'), {status: 400})
 
   const [started_assignment] = await knex('chore_assignments')
     .where({id})
@@ -378,6 +382,38 @@ const resumeAssignment = async (id, child_id, comment) => {
   return {resumed_assignment, assignment_comment}
 }
 
+const resumeRejectedAssignment = async (id, child_id, comment) => {
+  const assignment = await knex('chore_assignments')
+    .where({id})
+    .first()
+
+  if(!assignment) throw Object.assign(new Error('Assignment not found'), {status: 404})
+  if(assignment.child_id !== child_id) throw Object.assign(new Error('Not your assignment'), {status: 403})
+  if(assignment.status !== 'rejected') throw Object.assign(new Error('Assignment status not REJECTED'), {status: 400})
+
+  const [resumed_assignment] = await knex('chore_assignments')
+    .where({id})
+    .update({status:'in_progress'})
+    .returning('*')
+
+  let assignment_comment = null
+
+  if(comment){
+    const result = await knex('assignment_comments')
+      .insert({
+        assignment_id: assignment.id,
+        user_id: child_id,
+        comment,
+        created_at: knex.fn.now()
+      })
+      .returning('*')
+
+    assignment_comment = result[0]
+  }
+
+  return {resumed_assignment, assignment_comment}
+}
+
 const cancelAssignment = async (id, reviewer_id, household_id, comment) => {
   const assignment = await knex('chore_assignments')
     .join('chores', 'chore_assignments.chore_id', 'chores.id')
@@ -386,7 +422,7 @@ const cancelAssignment = async (id, reviewer_id, household_id, comment) => {
     .first()
 
   if(!assignment) throw Object.assign(new Error('Assignment not found'), {status: 404})
-  if(assignment.status !== 'assigned') throw Object.assign(new Error('Cannot cancel assignments not in ASSIGNED status'), {status: 400})
+  if(assignment.status !== 'assigned' && assignment.status !== 'unassigned') throw Object.assign(new Error('Cannot cancel assignments not in UN/ASSIGNED status'), {status: 400})
 
   const [updated_assignment] = await knex('chore_assignments')
     .where({id})
@@ -441,6 +477,7 @@ const reassignAssignment = async (id, reviewer_id, household_id, child_id, comme
       paused_at:null,
       time_paused: 0,
       pause_count: 0,
+      submitted_at: null,
       reviewed_by: reviewer_id,
       reviewed_at: knex.fn.now()
     })
@@ -531,4 +568,4 @@ const pauseAllActive = async (reviewer_id, household_id, comment) => {
   return {paused_assignments, assignment_comments}
 }
 
-module.exports = {getAssignments, getMyAssignments, createAssignment, submitAssignment, approveAssignment, rejectAssignment, addComment, getComments, dismissAssignment, startAssignment, pauseAssignment, resumeAssignment, cancelAssignment, reassignAssignment, parentPauseAssignment, pauseAllActive, claimAssignment, getAvailableAssignments}
+module.exports = {getAssignments, getMyAssignments, createAssignment, submitAssignment, approveAssignment, rejectAssignment, addComment, getComments, dismissAssignment, startAssignment, pauseAssignment, resumeAssignment, resumeRejectedAssignment, cancelAssignment, reassignAssignment, parentPauseAssignment, pauseAllActive, claimAssignment, getAvailableAssignments}

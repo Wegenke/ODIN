@@ -5,7 +5,7 @@
 exports.up = function(knex) {
   return knex.schema.createTable('reward_contributions', table => {
     table.increments('id')
-    table.integer('reward_id').unsigned().references('id').inTable('rewards').notNullable()
+    table.integer('reward_id').unsigned().references('id').inTable('rewards').onDelete('CASCADE').notNullable()
     table.integer('child_id').unsigned().references('id').inTable('users').notNullable()
     table.integer('points').notNullable()
     table.boolean('refund_requested').defaultTo(false).notNullable()

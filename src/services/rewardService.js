@@ -125,7 +125,7 @@ const contributeToReward = async (reward_id, child_id, household_id, requested_p
 
     const actual = Math.min(requested_points, remaining, child.points_balance)
 
-    if (actual <= 0 && remaining <= 0) throw Object.assign(new Error('Reward is already fully funded'), {status: 400})
+    if (remaining <= 0) throw Object.assign(new Error('Reward is already fully funded'), {status: 400})
     if (actual <= 0) throw Object.assign(new Error('Insufficient points balance'), {status: 400})
 
     const [contribution] = await trx('reward_contributions')

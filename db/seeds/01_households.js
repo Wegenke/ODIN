@@ -8,6 +8,6 @@ await knex.raw('TRUNCATE TABLE transactions, reward_contributions, rewards, assi
 
   await knex('households')
     .insert([
-    {name: 'WAGONKEYS'}
+    {name: 'SIMPSONS'}
     ]);
 };

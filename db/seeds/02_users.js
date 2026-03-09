@@ -21,30 +21,28 @@ exports.seed = async function(knex) {
     .insert([
       {
         household_id: 1,
-        name: 'Father',
-        nick_name: "POPS",
-        avatar: 'green slug',
+        name: 'Homer',
+        nick_name: "HOMIE",
+        avatar: 'homer hedge',
         role: 'parent',
         pin_hash: parent1
       },{
         household_id: 1,
-        name: 'Mother',
-        nick_name: "MAMMA",
-        avatar: 'red rose',
+        name: 'Marge',
+        avatar: 'blue hair',
         role: 'parent',
         pin_hash: parent2
       },{
         household_id: 1,
-        name: 'Eldest',
-        nick_name: "BUBBA",
-        avatar: 'blue snail',
+        name: 'Bart',
+        nick_name: "BART MAN",
+        avatar: 'skateboard',
         role: 'child',
         pin_hash: child1
       },{
         household_id: 1,
-        name: 'Youngest',
-        nick_name: "BIG GUY",
-        avatar: 'pink eye',
+        name: 'Lisa',
+        avatar: 'saxophone',
         role: 'child',
         pin_hash: child2
       }

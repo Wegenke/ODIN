@@ -3,6 +3,7 @@ const cors = require('cors')
 const session = require('express-session')
 const helmet = require('helmet')
 
+const { getSetupStatus,  setup } = require('./controllers/setupController')
 const authRouter = require('./routes/auth')
 const userRouter = require('./routes/users')
 const choreRouter = require('./routes/chores')
@@ -10,6 +11,9 @@ const assignmentRouter = require('./routes/assignments')
 const rewardRouter = require('./routes/rewards')
 const transactionRouter = require('./routes/transactions')
 const dashboardRouter = require('./routes/dashboards')
+
+const validate = require('./middleware/validate')
+const { setupSchema } = require('./validators/setupSchemas')
 
 const app = express()
 
@@ -28,7 +32,7 @@ app.use(session({
   cookie: {
     secure: false, //Set to true for Caddy migration
     httpOnly: true,
-    sameSite: 'lax'
+    sameSite: 'lax',
   }
 }))
 
@@ -40,8 +44,8 @@ app.use('/rewards', rewardRouter)
 app.use('/transactions', transactionRouter)
 app.use('/dashboard', dashboardRouter)
 
-app.get('/health', (request, response) => {
-  response.json({status:'ok'})
-})
+app.get('/health', (request, response) => {response.json({status:'ok'})})
+app.get('/setup', getSetupStatus)
+app.post('/setup', validate(setupSchema), setup)
 
 module.exports = app

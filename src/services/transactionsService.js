@@ -8,7 +8,7 @@ const getMyTransactions = async (child_id, {page=1, limit=20, source} = {}) => {
   if(source) query.andWhere({source})
 
   const [{count}] = await query.clone()
-    .count('id as count')
+    .count('transactions.id as count')
   const total = parseInt(count)
 
   const data = await query
@@ -37,7 +37,8 @@ const getTransactionsByChild = async (child_id, household_id, {page=1, limit=20,
   if(source) query.andWhere({source})
 
   const [{count}] = await query.clone()
-    .count('id as count')
+    .clearSelect()
+    .count('transactions.id as count')
   const total = parseInt(count)
 
   const data = await query
@@ -66,7 +67,8 @@ const getHouseholdTransactions = async (household_id, {page=1, limit=20, source}
   if(source) query.andWhere({source})
 
   const [{count}] = await query.clone()
-    .count('id as count')
+    .clearSelect()
+    .count('transactions.id as count')
   const total = parseInt(count)
 
   const data = await query

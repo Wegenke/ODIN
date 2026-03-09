@@ -13,10 +13,9 @@ const getProfiles = async (req,res) => {
 const login = async (req,res) => {
   try{
     const {user_id, pin} = req.body
-    const result = await authService.login(user_id, pin)
-    if(!result.success) return res.status(401).json({message:result.message})
-    req.session.user = result.safeUser
-    return res.status(200).json(result.safeUser)
+    const safeUser = await authService.login(user_id, pin)
+    req.session.user = safeUser
+    return res.status(200).json(safeUser)
   }catch(err){
     if(err.status) return res.status(err.status).json({message:err.message})
     return res.status(500).json({message:'Server error'})

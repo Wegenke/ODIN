@@ -30,7 +30,7 @@ Create a `.env` file in the root of this directory:
 
 ```
 NODE_ENV=development
-PORT=3000
+PORT=8080
 DB_HOST=localhost
 DB_PORT=5432
 DB_NAME=chore_tracker
@@ -61,9 +61,9 @@ npx knex seed:run
 node src/server.js
 ```
 
-API is available at `http://localhost:3000`.
+API is available at `http://localhost:8080`.
 
-Health check: `http://localhost:3000/health`
+Health check: `http://localhost:8080/health`
 
 ---
 
@@ -115,6 +115,7 @@ ODIN/
 | Rewards | `/rewards` |
 | Transactions | `/transactions` |
 | Dashboard | `/dashboard` |
+| Setup | `/setup` |
 | Health | `/health` |
 
 Full endpoint reference: see `odin-reference.md` in the project docs.

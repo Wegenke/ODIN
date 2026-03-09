@@ -65,7 +65,7 @@ const getParentDashboard = async (household_id) => {
         })
         .select(
           'chore_assignments.id',
-          'chore_assignments.created_at',
+          'chore_assignments.assigned_at',
           'chores.title as chore_title',
           'chores.points'
         )

@@ -15,11 +15,14 @@ const connection = {
 
 module.exports = {
 
-  production: {
+  development: {
     client: 'postgresql',
     connection,
     migrations: {
       directory: './db/migrations',
+    },
+    seeds: {
+      directory: './db/seeds',
     }
   },
 
@@ -29,6 +32,13 @@ module.exports = {
     migrations: {
       directory: './db/migrations',
     }
-  }
+  },
 
+  production: {
+    client: 'postgresql',
+    connection,
+    migrations: {
+      directory: './db/migrations',
+    }
+  }
 };
