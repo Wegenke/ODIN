@@ -37,7 +37,7 @@ DB_NAME=chore_tracker
 DB_USER=your_db_user
 DB_PASSWORD=your_db_password
 SESSION_SECRET=a_long_random_string
-CLIENT_URL=http://localhost:5173
+CLIENT_URL=http://localhost:3333
 ```
 
 ---
