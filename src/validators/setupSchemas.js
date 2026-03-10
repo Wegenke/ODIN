@@ -7,7 +7,7 @@ const setupSchema = z.object({
   user: z.object({
     name: z.string(),
     nick_name: z.string().default('PARENT').transform(val => val.toUpperCase()),
-    avatar: z.string().default('Roshi'),
+    avatar: z.object({style:z.string()}).passthrough(),
     pin: z.string().min(4).max(8)
   })
 })

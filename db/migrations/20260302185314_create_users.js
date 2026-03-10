@@ -8,7 +8,7 @@ exports.up = function(knex) {
     table.integer('household_id').unsigned().references('id').inTable('households').notNullable()
     table.string('name').notNullable()
     table.string('nick_name')
-    table.string('avatar').notNullable()
+    table.jsonb('avatar').notNullable()
     table.enum('role', ['parent','child'])
     table.string('pin_hash').notNullable()
     table.string('status').defaultTo('active').notNullable()

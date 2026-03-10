@@ -15,7 +15,7 @@ const createChore = async (data) => {
 }
 
 const updateChore = async (id, household_id, data) => {
-  const allowedFields = ['title','points','description','recurrence_rule']
+  const allowedFields = ['title','points','description', 'emoji','recurrence_rule']
 
   const updateFields = Object.fromEntries(
     Object.entries(data)

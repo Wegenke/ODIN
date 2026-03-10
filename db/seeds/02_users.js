@@ -23,26 +23,26 @@ exports.seed = async function(knex) {
         household_id: 1,
         name: 'Homer',
         nick_name: "HOMIE",
-        avatar: 'homer hedge',
+        avatar: {style:'pixel-art', seed:'Homer'},
         role: 'parent',
         pin_hash: parent1
       },{
         household_id: 1,
         name: 'Marge',
-        avatar: 'blue hair',
+        avatar: {style:'pixel-art', seed:'Marge'},
         role: 'parent',
         pin_hash: parent2
       },{
         household_id: 1,
         name: 'Bart',
         nick_name: "BART MAN",
-        avatar: 'skateboard',
+        avatar: {style:'pixel-art', seed:'Bart'},
         role: 'child',
         pin_hash: child1
       },{
         household_id: 1,
         name: 'Lisa',
-        avatar: 'saxophone',
+        avatar: {style:'pixel-art', seed:'Lisa'},
         role: 'child',
         pin_hash: child2
       }

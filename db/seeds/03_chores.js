@@ -9,6 +9,7 @@ exports.seed = async function(knex) {
         household_id: 1,
         title: 'make bed',
         description: "Bed needs to be made as soon as you wake up.",
+        emoji:'🛏️',
         points: 10,
         recurrence_rule: 'daily',
         created_by: 1
@@ -16,6 +17,7 @@ exports.seed = async function(knex) {
         household_id: 1,
         title: 'dog poop',
         description: 'Dog poo must be cleaned up every Thursday.',
+        emoji:'🐕💩',
         points: 50,
         recurrence_rule: 'weekly',
         created_by: 1
@@ -23,6 +25,7 @@ exports.seed = async function(knex) {
         household_id: 1,
         title: 'do dishes',
         description: 'Dishwasher needs to be unloaded and loaded daily.',
+        emoji:'🍽️',
         points: 20,
         recurrence_rule: 'daily',
         created_by: 2
@@ -30,6 +33,7 @@ exports.seed = async function(knex) {
         household_id: 1,
         title: 'clean baseboards',
         description: 'Baseboards need to be dusted.',
+        emoji:'🧼',
         points: 30,
         recurrence_rule: null,
         created_by: 2
@@ -37,6 +41,7 @@ exports.seed = async function(knex) {
         household_id: 1,
         title: 'mop floor',
         description: 'Mop the floor.',
+        emoji:'🪣🧹',
         points: 40,
         recurrence_rule: null,
         created_by: 1
@@ -44,6 +49,7 @@ exports.seed = async function(knex) {
         household_id: 1,
         title: 'homework',
         description: 'Homework must be done every Friday.',
+        emoji:'📃',
         points: 30,
         recurrence_rule: 'weekly',
         created_by: 1
@@ -51,6 +57,7 @@ exports.seed = async function(knex) {
         household_id: 1,
         title: 'take out trash',
         description: 'Take kitchen trash out.',
+        emoji:'🗑️',
         points: 10,
         recurrence_rule: 'daily',
         created_by: 2
@@ -58,6 +65,7 @@ exports.seed = async function(knex) {
         household_id: 1,
         title: 'clean bathroom',
         description: 'Your bathroom needs to be cleaned once a month.',
+        emoji:'🧼🚽',
         points: 50,
         recurrence_rule: 'monthly',
         created_by: 2
