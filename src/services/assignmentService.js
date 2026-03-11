@@ -51,6 +51,7 @@ const getAvailableAssignments = async (household_id) => {
       'chore_assignments.status',
       'chore_assignments.assigned_at',
       'chores.title as chore_title',
+      'chores.emoji',
       'chores.points'
     )
     .orderBy('chore_assignments.id')

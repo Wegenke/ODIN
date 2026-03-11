@@ -13,6 +13,14 @@ exports.seed = async function(knex) {
       is_shared: true
     },{ // 2 — active (partially funded)
       household_id: 1,
+      created_by: 4,
+      name: 'Street Fighter 5',
+      description: 'Street Fighter 6 for PC',
+      link: 'https://store.steampowered.com/app/1364780/Street_Fighter_5/',
+      points_required: 100,
+      status: 'active'
+    },{ // 2 — active (partially funded)
+      household_id: 1,
       created_by: 3,
       name: 'Street Fighter 6',
       description: 'Street Fighter 6 for PC',

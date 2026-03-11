@@ -1,7 +1,7 @@
 const z = require('zod')
 
 const createRewardSchema = z.object({
-  name: z.string().min(1).max(100),
+  name: z.string().min(1).max(100).transform(v => v.trim().replace(/\b\w/g, c => c.toUpperCase())),
   description: z.string().optional(),
   link: z.string().optional(),
   points_required: z.number().int().positive().refine(v => v % 10 === 0, 'Must be a multiple of 10').optional(),
