@@ -1,5 +1,5 @@
 const express = require('express')
-const {getAssignments, getMyAssignments, createAssignment, submitAssignment, approveAssignment, rejectAssignment, addComment, getComments, dismissAssignment, startAssignment, pauseAssignment, resumeAssignment, resumeRejectedAssignment, cancelAssignment, reassignAssignment, parentPauseAssignment, pauseAllActive, claimAssignment, getAvailableAssignments} = require('../controllers/assignmentController')
+const {getAssignments, getMyAssignments, createAssignment, submitAssignment, approveAssignment, rejectAssignment, addComment, getComments, dismissAssignment, startAssignment, pauseAssignment, resumeAssignment, resumeRejectedAssignment, cancelAssignment, reassignAssignment, parentPauseAssignment, pauseAllActive, claimAssignment, getAvailableAssignments, assignAssignment, unassignAssignment} = require('../controllers/assignmentController')
 const auth = require('../middleware/auth')
 const roleCheck = require('../middleware/roleCheck')
 const validate = require('../middleware/validate')
@@ -26,7 +26,7 @@ router.patch('/:id/resume-rejected', auth, roleCheck('child'), validate(optional
 router.patch('/:id/dismiss', auth, roleCheck('parent'), validate(optionalCommentSchema), dismissAssignment)
 router.patch('/:id/cancel', auth, roleCheck('parent'), validate(optionalCommentSchema), cancelAssignment)
 router.patch('/:id/reassign', auth, roleCheck('parent'), validate(reassignAssignmentSchema), reassignAssignment)
-
-
+router.patch('/:id/assign', auth, roleCheck('parent'), validate(reassignAssignmentSchema), assignAssignment)
+router.patch('/:id/unassign', auth, roleCheck('parent'), validate(optionalCommentSchema), unassignAssignment)
 
 module.exports = router

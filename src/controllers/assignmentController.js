@@ -240,6 +240,32 @@ const pauseAllActive = async (req,res) =>{
   }
 }
 
+const assignAssignment = async (req,res) =>{
+  try{
+    const {id} = req.params
+    const {id: reviewer_id, household_id} = req.session.user
+    const {child_id, comment} = req.body
 
+    const assignment = await assignmentService.assignAssignment(id, reviewer_id, household_id, child_id, comment)
+    return res.status(200).json(assignment)
+  }catch(err){
+    if(err.status) return res.status(err.status).json({message:err.message})
+  return res.status(500).json({message:"Server error"})
+  }
+}
 
-module.exports = {getAssignments, getMyAssignments, createAssignment, submitAssignment, approveAssignment, rejectAssignment, addComment, getComments, dismissAssignment, startAssignment, pauseAssignment, resumeAssignment, resumeRejectedAssignment, cancelAssignment, reassignAssignment, parentPauseAssignment, pauseAllActive, claimAssignment, getAvailableAssignments}
+const unassignAssignment = async (req,res) =>{
+  try{
+    const {id} = req.params
+    const {id: reviewer_id, household_id} = req.session.user
+    const {comment} = req.body
+
+    const assignment = await assignmentService.unassignAssignment(id, reviewer_id, household_id, comment)
+    return res.status(200).json(assignment)
+  }catch(err){
+    if(err.status) return res.status(err.status).json({message:err.message})
+  return res.status(500).json({message:"Server error"})
+  }
+}
+
+module.exports = {getAssignments, getMyAssignments, createAssignment, submitAssignment, approveAssignment, rejectAssignment, addComment, getComments, dismissAssignment, startAssignment, pauseAssignment, resumeAssignment, resumeRejectedAssignment, cancelAssignment, reassignAssignment, parentPauseAssignment, pauseAllActive, claimAssignment, getAvailableAssignments, assignAssignment, unassignAssignment}

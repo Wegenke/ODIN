@@ -11,8 +11,10 @@ const getAssignments = async (household_id) => {
       'chore_assignments.assigned_at',
       'chore_assignments.submitted_at',
       'chore_assignments.completed_at',
+      'chore_assignments.child_id',
       'chores.title as chore_title',
       'chores.points',
+      'chores.emoji',
       'users.name as child_name',
       'users.avatar as child_avatar'
     )
@@ -423,7 +425,7 @@ const cancelAssignment = async (id, reviewer_id, household_id, comment) => {
     .first()
 
   if(!assignment) throw Object.assign(new Error('Assignment not found'), {status: 404})
-  if(assignment.status !== 'assigned' && assignment.status !== 'unassigned') throw Object.assign(new Error('Cannot cancel assignments not in UN/ASSIGNED status'), {status: 400})
+  if(assignment.status !== 'assigned' && assignment.status !== 'unassigned' && assignment.status !== 'rejected') throw Object.assign(new Error('Cannot cancel assignments not in UN/ASSIGNED status'), {status: 400})
 
   const [updated_assignment] = await knex('chore_assignments')
     .where({id})
@@ -569,4 +571,93 @@ const pauseAllActive = async (reviewer_id, household_id, comment) => {
   return {paused_assignments, assignment_comments}
 }
 
-module.exports = {getAssignments, getMyAssignments, createAssignment, submitAssignment, approveAssignment, rejectAssignment, addComment, getComments, dismissAssignment, startAssignment, pauseAssignment, resumeAssignment, resumeRejectedAssignment, cancelAssignment, reassignAssignment, parentPauseAssignment, pauseAllActive, claimAssignment, getAvailableAssignments}
+const assignAssignment = async (id, reviewer_id, household_id, child_id, comment) => {
+  const assignment = await knex('chore_assignments')
+    .join('chores', 'chore_assignments.chore_id', 'chores.id')
+    .where({'chore_assignments.id': id, 'chores.household_id': household_id})
+    .select('chore_assignments.*')
+    .first()
+
+  if(!assignment) throw Object.assign(new Error('Assignment not found'), {status: 404})
+  if(assignment.status !== 'unassigned') throw Object.assign(new Error('Assignment is not unassigned'), {status: 400})
+
+  const child = await knex('users')
+    .where({id: child_id, household_id})
+    .first()
+  if(!child) throw Object.assign(new Error('No user with that ID'), {status: 404})
+  if(child.role === 'parent') throw Object.assign(new Error('Not a child user'), {status: 400})
+
+  const [updated_assignment] = await knex('chore_assignments')
+    .where({id})
+    .update({
+      child_id,
+      status: 'assigned',
+      assigned_at: knex.fn.now(),
+      reviewed_by: reviewer_id,
+      reviewed_at: knex.fn.now()
+    })
+    .returning('*')
+
+  let assignment_comment = null
+
+  if(comment){
+    const result = await knex('assignment_comments')
+      .insert({
+        assignment_id: assignment.id,
+        user_id: reviewer_id,
+        comment,
+        created_at: knex.fn.now()
+      })
+      .returning('*')
+
+    assignment_comment = result[0]
+  }
+
+  return {updated_assignment, assignment_comment}
+}
+
+const unassignAssignment = async (id, reviewer_id, household_id, comment) => {
+  const assignment = await knex('chore_assignments')
+    .join('chores', 'chore_assignments.chore_id', 'chores.id')
+    .where({'chore_assignments.id': id, 'chores.household_id': household_id})
+    .select('chore_assignments.*')
+    .first()
+
+  if(!assignment) throw Object.assign(new Error('Assignment not found'), {status: 404})
+  if(!['assigned', 'rejected', 'paused', 'parent_paused'].includes(assignment.status)) throw Object.assign(new Error('Cannot unassign from current status'), {status: 400})
+
+  const [updated_assignment] = await knex('chore_assignments')
+    .where({id})
+    .update({
+      child_id: null,
+      status: 'unassigned',
+      assigned_at: null,
+      started_at: null,
+      paused_at: null,
+      time_paused: 0,
+      pause_count: 0,
+      submitted_at: null,
+      reviewed_by: reviewer_id,
+      reviewed_at: knex.fn.now()
+    })
+    .returning('*')
+
+  let assignment_comment = null
+
+  if(comment){
+    const result = await knex('assignment_comments')
+      .insert({
+        assignment_id: assignment.id,
+        user_id: reviewer_id,
+        comment,
+        created_at: knex.fn.now()
+      })
+      .returning('*')
+
+    assignment_comment = result[0]
+  }
+
+  return {updated_assignment, assignment_comment}
+}
+
+module.exports = {getAssignments, getMyAssignments, createAssignment, submitAssignment, approveAssignment, rejectAssignment, addComment, getComments, dismissAssignment, startAssignment, pauseAssignment, resumeAssignment, resumeRejectedAssignment, cancelAssignment, reassignAssignment, parentPauseAssignment, pauseAllActive, claimAssignment, getAvailableAssignments, assignAssignment, unassignAssignment}
