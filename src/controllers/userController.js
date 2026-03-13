@@ -93,6 +93,7 @@ const updateMe = async (req,res) =>{
       data.pin_last_changed = new Date()
     }
     const users = await userService.updateMe(id,data)
+    req.session.user = { ...req.session.user, ...users }
     return res.status(200).json(users)
   }catch(err){
     if(err.status) return res.status(err.status).json({message:err.message})
@@ -100,4 +101,16 @@ const updateMe = async (req,res) =>{
   }
 }
 
-module.exports = {getUsers, getUserById, getUserTransactions,createUser,getRecentPinChanges, updateUser, updateMe}
+const deactivateUser = async (req, res) => {
+  try {
+    const { id } = req.params
+    const { household_id } = req.session.user
+    await userService.deactivateUser(id, household_id)
+    return res.status(200).json({ message: 'User deactivated' })
+  } catch (err) {
+    if (err.status) return res.status(err.status).json({ message: err.message })
+    return res.status(500).json({ message: 'Server error' })
+  }
+}
+
+module.exports = {getUsers, getUserById, getUserTransactions, createUser, getRecentPinChanges, updateUser, updateMe, deactivateUser}

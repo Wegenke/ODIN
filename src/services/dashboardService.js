@@ -4,6 +4,7 @@ const getParentDashboard = async (household_id) => {
   const [children, submittedAssignments, pendingRewards, refundRequests, unassignedAssignments, assignmentCounts] = await Promise.all([
     knex('users')
       .where({ household_id, role: 'child' })
+      .where(q => q.whereNot({ status: 'inactive' }).orWhereNull('status'))
       .select('id', 'name', 'nick_name', 'avatar', 'points_balance'),
 
     knex('chore_assignments')
@@ -111,7 +112,8 @@ const getChildDashboard = async (child_id, household_id) => {
         'chore_assignments.status',
         'chores.title as chore_title',
         'chores.emoji',
-        'chores.points'
+        'chores.points',
+        'chores.description'
       ),
 
     knex('rewards')
@@ -126,7 +128,7 @@ const getChildDashboard = async (child_id, household_id) => {
       .join('rewards', 'reward_contributions.reward_id', 'rewards.id')
       .where({ 'reward_contributions.child_id': child_id, 'rewards.household_id': household_id })
       .whereIn('rewards.status', ['active', 'funded'])
-      .select('reward_contributions.reward_id', 'reward_contributions.points'),
+      .select('reward_contributions.reward_id', 'reward_contributions.points', 'reward_contributions.refund_requested'),
 
     knex('rewards')
       .where({ household_id, created_by: child_id })
@@ -138,12 +140,15 @@ const getChildDashboard = async (child_id, household_id) => {
 
   const myContribMap = {}
   for (const c of myContributions) {
-    myContribMap[c.reward_id] = (myContribMap[c.reward_id] || 0) + c.points
+    if (!myContribMap[c.reward_id]) myContribMap[c.reward_id] = { points: 0, refund_requested: false }
+    myContribMap[c.reward_id].points += c.points
+    if (c.refund_requested) myContribMap[c.reward_id].refund_requested = true
   }
 
   const annotatedRewards = rewards.map(r => ({
     ...r,
-    my_contribution: myContribMap[r.id] || 0,
+    my_contribution: myContribMap[r.id]?.points || 0,
+    refund_requested: myContribMap[r.id]?.refund_requested || false,
     remaining: r.points_required - parseInt(r.contributed_total)
   }))
 

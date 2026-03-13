@@ -3,6 +3,7 @@ const knex = require('../db')
 const getUsers = async (household_id) => {
   return await knex('users')
   .where({household_id})
+  .where(q => q.whereNot({ status: 'inactive' }).orWhereNull('status'))
   .select('id','name','nick_name','avatar','role')
   .orderBy('id')
 }
@@ -85,4 +86,14 @@ const updateMe = async (id,data) => {
   return updatedUser
 }
 
-module.exports = {getUsers, getUserById, getUserTransactions, createUser, getRecentPinChanges, updateUser, updateMe}
+const deactivateUser = async (id, household_id) => {
+  const [user] = await knex('users')
+    .where({ id, household_id, role: 'child' })
+    .update({ status: 'inactive' })
+    .returning('id')
+
+  if (!user) throw Object.assign(new Error('User not found or cannot be deactivated'), { status: 404 })
+  return user
+}
+
+module.exports = {getUsers, getUserById, getUserTransactions, createUser, getRecentPinChanges, updateUser, updateMe, deactivateUser}

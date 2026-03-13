@@ -140,7 +140,7 @@ const contributeToReward = async (reward_id, child_id, household_id, requested_p
         child_id,
         amount: -actual,
         source: 'reward_contribution',
-        reference_id: contribution.id
+        reference_id: reward_id
       })
 
     await trx('users')
@@ -230,7 +230,7 @@ const cancelReward = async (id, household_id) => {
           child_id: contribution.child_id,
           amount: contribution.points,
           source: 'reward_refund',
-          reference_id: contribution.id
+          reference_id: id
         })
 
       await trx('users')

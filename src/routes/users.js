@@ -1,5 +1,5 @@
 const express = require('express')
-const {getUsers, getUserById, getUserTransactions, createUser,getRecentPinChanges, updateUser, updateMe} = require('../controllers/userController')
+const {getUsers, getUserById, getUserTransactions, createUser, getRecentPinChanges, updateUser, updateMe, deactivateUser} = require('../controllers/userController')
 const auth = require('../middleware/auth')
 const roleCheck = require('../middleware/roleCheck')
 const validate = require('../middleware/validate')
@@ -12,6 +12,7 @@ router.get('/pin_changes', auth, roleCheck('parent'), getRecentPinChanges)
 router.patch('/me', auth, validate(updateMeSchema), updateMe)
 router.get('/:id', auth, getUserById)
 router.patch('/:id', auth, roleCheck('parent'), validate(updateUserSchema), updateUser)
+router.delete('/:id', auth, roleCheck('parent'), deactivateUser)
 router.get('/:id/transactions', auth, roleCheck('parent'),getUserTransactions)
 
 

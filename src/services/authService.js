@@ -3,6 +3,7 @@ const knex = require('../db')
 
 const getProfiles = async () => {
   return await knex('users')
+    .where(q => q.whereNot({ status: 'inactive' }).orWhereNull('status'))
     .select('id','name','nick_name','avatar','role')
     .orderBy('id')
 }

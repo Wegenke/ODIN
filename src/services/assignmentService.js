@@ -54,7 +54,8 @@ const getAvailableAssignments = async (household_id) => {
       'chore_assignments.assigned_at',
       'chores.title as chore_title',
       'chores.emoji',
-      'chores.points'
+      'chores.points',
+      'chores.description'
     )
     .orderBy('chore_assignments.id')
 }
@@ -246,8 +247,11 @@ const getComments = async (assignment_id, household_id) => {
   if (!assignment) throw Object.assign(new Error('Assignment not found'), {status: 404})
 
   return await knex('assignment_comments')
-    .where({assignment_id})
-    .orderBy('id')
+    .join('users', 'assignment_comments.user_id', 'users.id')
+    .where({ assignment_id })
+    .select('assignment_comments.*', 'users.name as user_name', 'users.nick_name as user_nick_name')
+    .orderBy('assignment_comments.id')
+
 }
 
 const dismissAssignment = async (id, reviewer_id, household_id, comment) => {
