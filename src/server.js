@@ -1,4 +1,5 @@
 require('dotenv').config()
+require('./scheduler')
 const app = require('./app')
 
 const PORT = process.env.PORT

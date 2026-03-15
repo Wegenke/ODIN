@@ -11,7 +11,6 @@ exports.seed = async function(knex) {
         description: "Bed needs to be made as soon as you wake up.",
         emoji:'🛏️',
         points: 10,
-        recurrence_rule: 'daily',
         created_by: 1
       },{
         household_id: 1,
@@ -19,7 +18,6 @@ exports.seed = async function(knex) {
         description: 'Dog poo must be cleaned up every Thursday.',
         emoji:'🐕💩',
         points: 50,
-        recurrence_rule: 'weekly',
         created_by: 1
       },{
         household_id: 1,
@@ -27,7 +25,6 @@ exports.seed = async function(knex) {
         description: 'Dishwasher needs to be unloaded and loaded daily.',
         emoji:'🍽️',
         points: 20,
-        recurrence_rule: 'daily',
         created_by: 2
       },{
         household_id: 1,
@@ -35,7 +32,6 @@ exports.seed = async function(knex) {
         description: 'Baseboards need to be dusted.',
         emoji:'🧼',
         points: 30,
-        recurrence_rule: null,
         created_by: 2
       },{
         household_id: 1,
@@ -43,7 +39,6 @@ exports.seed = async function(knex) {
         description: 'Mop the floor.',
         emoji:'🪣🧹',
         points: 40,
-        recurrence_rule: null,
         created_by: 1
       },{
         household_id: 1,
@@ -51,7 +46,6 @@ exports.seed = async function(knex) {
         description: 'Homework must be done every Friday.',
         emoji:'📃',
         points: 30,
-        recurrence_rule: 'weekly',
         created_by: 1
       },{
         household_id: 1,
@@ -59,7 +53,6 @@ exports.seed = async function(knex) {
         description: 'Take kitchen trash out.',
         emoji:'🗑️',
         points: 10,
-        recurrence_rule: 'daily',
         created_by: 2
       },{
         household_id: 1,
@@ -67,7 +60,6 @@ exports.seed = async function(knex) {
         description: 'Your bathroom needs to be cleaned once a month.',
         emoji:'🧼🚽',
         points: 50,
-        recurrence_rule: 'monthly',
         created_by: 2
       }
     ]);

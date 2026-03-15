@@ -6,6 +6,7 @@ const pgSession = require('connect-pg-simple')(session)
 const morgan = require('morgan')
 const db = require('./db')
 
+const scheduleRouter = require('./routes/schedules')
 const { getSetupStatus,  setup } = require('./controllers/setupController')
 const authRouter = require('./routes/auth')
 const userRouter = require('./routes/users')
@@ -60,6 +61,7 @@ app.use('/assignments', assignmentRouter)
 app.use('/rewards', rewardRouter)
 app.use('/transactions', transactionRouter)
 app.use('/dashboard', dashboardRouter)
+app.use('/schedules', scheduleRouter)
 
 app.get('/health', async (req, res) => {
   try{

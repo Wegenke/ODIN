@@ -10,7 +10,6 @@ exports.up = function(knex) {
     table.text('description')
     table.string('emoji').notNullable()
     table.integer('points')
-    table.string('recurrence_rule')
     table.integer("created_by").unsigned().references('id').inTable('users').notNullable()
     table.timestamp('created_at').defaultTo(knex.fn.now())
   })
