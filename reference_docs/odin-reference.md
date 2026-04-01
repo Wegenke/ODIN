@@ -132,14 +132,13 @@ Links chores to children with full status tracking.
 **State machine (enforced in `assignmentService.js`):**
 
 ```
-unassigned      → assigned       (child — claim; or parent — assign)
+unassigned      → assigned       (child — claim; or parent — reassign)
 unassigned      → canceled       (parent — cancel)
 assigned        → in_progress    (child — start)
 assigned        → submitted      (child — submit, optional comment)
 assigned        → canceled       (parent — cancel)
 assigned        → dismissed      (parent — dismiss)
-assigned        → assigned       (parent — reassign; resets to assigned for new child)
-assigned        → unassigned     (parent — unassign; returns to pool)
+assigned        → reassigned     (parent — reassign; resets to assigned for new child)
 in_progress     → submitted      (child — submit, optional comment)
 in_progress     → paused         (child — pause, optional comment)
 in_progress     → parent_paused  (parent — parent-pause, optional comment)
@@ -147,25 +146,18 @@ in_progress     → dismissed      (parent — dismiss)
 paused          → in_progress    (child — resume; accumulates time_paused)
 paused          → submitted      (child — submit)
 paused          → dismissed      (parent — dismiss)
-paused          → unassigned     (parent — unassign; returns to pool)
 parent_paused   → in_progress    (child — resume; does NOT accumulate time_paused)
-parent_paused   → unassigned     (parent — unassign; returns to pool)
 submitted       → approved       (parent — approve; awards points via transaction)
 submitted       → rejected       (parent — reject, required comment)
 rejected        → in_progress    (child — resume-rejected; preserves started_at and pause data)
 rejected        → dismissed      (parent — dismiss)
-rejected        → canceled       (parent — cancel)
-rejected        → assigned       (parent — reassign; resets to assigned for new child)
-rejected        → unassigned     (parent — unassign; returns to pool)
 ```
 
 Any invalid transition returns 400. The service checks both current status and requesting user's role before applying any transition.
 
 ---
 
-### user_devices *(future implementation)*
-
-> **Not yet implemented.** No migration or application code exists for this table. Documented here as a planned schema for push notification support.
+### user_devices
 
 Stores FCM push tokens per device. One row per device — a user with both a phone and a tablet gets two rows. Used to fan out push notifications to all of a user's devices.
 
@@ -266,13 +258,13 @@ Ledger of all point activity. This is the source of truth for point history.
 | reference_id | integer | ID of related record |
 | created_at | timestamp | Default now() |
 
-| Source | Amount | Reference | Status |
-|---|---|---|---|
-| chore_approved | + | chore_assignments.id | Implemented |
-| reward_contribution | - | rewards.id | Implemented |
-| reward_refund | + | rewards.id | Implemented |
-| reward_redemption | - | rewards.id | *Future* |
-| manual_adjustment | +/- | null or users.id | *Future* |
+| Source | Amount | Reference |
+|---|---|---|
+| chore_approved | + | chore_assignments.id |
+| reward_contribution | - | rewards.id |
+| reward_refund | + | rewards.id |
+| reward_redemption | - | rewards.id |
+| manual_adjustment | +/- | null or users.id |
 
 ---
 
@@ -321,7 +313,7 @@ Points must never be duplicated, lost, over-contributed, or spent beyond a child
 ## API Structure
 
 ```
-src/
+backend/src/
   controllers/          — HTTP request/response only, no business logic
   services/             — business logic, DB queries, state machine enforcement
   middleware/
@@ -331,9 +323,9 @@ src/
     validateQuery.js    — validates req.query against Zod schema, returns 400
   routes/               — wires middleware chain: auth → roleCheck → validate → controller
   validators/           — Zod schemas for all route inputs
-db/
-  migrations/
-  seeds/
+  db/
+    migrations/
+    seeds/
 ```
 
 Route middleware chain: `auth` → `roleCheck` → `validate` / `validateQuery` → controller
@@ -349,9 +341,10 @@ Controllers are thin: parse params/body, call service, return response with corr
 | Method | Path | Auth | Notes |
 |---|---|---|---|
 | GET | /auth/profiles | No | Returns id, name, avatar, role only — never pin_hash |
-| POST | /auth/login | No | Accepts user id + PIN. Rate-limited per user. Returns `{ user }` |
-| POST | /auth/logout | No | Destroys session if one exists |
-| GET | /auth/session | No | Returns current session info |
+| POST | /auth/login | No | Accepts user id + PIN. Rate-limited per user. Returns `{ user, token }` |
+| POST | /auth/logout | Yes | Destroys session only. Does not affect JWT tokens |
+| POST | /auth/logout/mobile | Yes | Increments token_version, invalidating all JWTs for this user. Does not touch sessions |
+| GET | /auth/session | Yes | Returns current session info |
 
 Rate limiting: 3 failed attempts → 30-second lockout per profile (not global).
 
@@ -434,9 +427,8 @@ Rate limiting: 3 failed attempts → 30-second lockout per profile (not global).
 | PATCH | /rewards/:id/reject | Yes | parent | Reject pending reward (→ archived) |
 | PATCH | /rewards/:id/cancel | Yes | parent | Cancel active reward, auto-refund |
 | PATCH | /rewards/:id/archive | Yes | parent | Archive redeemed reward |
-| GET | /rewards/refund-requests | Yes | parent | List all pending refund requests |
 | POST | /rewards/:id/contribute | Yes | child | Contribute points (clamped) |
-| GET | /rewards/:id/progress | Yes | parent | Contribution breakdown |
+| GET | /rewards/:id/progress | Yes | any | Contribution breakdown |
 | POST | /rewards/:id/redeem | Yes | parent | Mark funded reward as redeemed |
 | PATCH | /rewards/:id/request-refund | Yes | child | Flag all own contributions for refund |
 | PATCH | /rewards/:id/approve-refund/:childId | Yes | parent | Approve refund, return points |
@@ -513,7 +505,7 @@ POST body:
 
 **Sessions:** `express-session` with `connect-pg-simple` PostgreSQL session store. Sessions persisted to the `session` table — survive restarts. `maxAge` set to 30 days. `household_id` and `id` always sourced from `req.session.user`, never from request body or params.
 
-**JWT (mobile) — *future implementation*:** `jsonwebtoken` is included as a dependency but not yet wired into the auth middleware or login flow. The planned design: `jsonwebtoken` (HS256). Login returns a 30-day signed token containing `{ id, household_id, role, name, nick_name, avatar, status, token_version }`. The `auth` middleware will accept either a valid session or an `Authorization: Bearer <token>` header — on valid JWT it populates `req.session.user` from the payload so all downstream middleware and controllers are unchanged. On JWT auth, the middleware will do a single DB lookup to verify `token_version` matches the current value in `users` — mismatches return 401. `token_version` will be incremented on PIN change or intentional mobile logout (`POST /auth/logout/mobile`), immediately invalidating all outstanding tokens for that user. Thor logout will never touch `token_version`, so mobile sessions survive kiosk logouts and timeouts.
+**JWT (mobile):** `jsonwebtoken` (HS256). Login returns a 30-day signed token containing `{ id, household_id, role, name, nick_name, avatar, status, token_version }`. The `auth` middleware accepts either a valid session or a `Authorization: Bearer <token>` header — on valid JWT it populates `req.session.user` from the payload so all downstream middleware and controllers are unchanged. On JWT auth, the middleware does a single DB lookup to verify `token_version` matches the current value in `users` — mismatches return 401. `token_version` is incremented on PIN change or intentional mobile logout (`POST /auth/logout/mobile`), immediately invalidating all outstanding tokens for that user. Thor logout never touches `token_version`, so mobile sessions survive kiosk logouts and timeouts.
 
 **Rate limiting:** Per-user lockout — 3 failed login attempts → 30-second cooldown per profile. Not global (one child's mistakes don't lock out parents). Implemented via `express-rate-limit` keyed on `user_id`, with `skipSuccessfulRequests: true`.
 
@@ -558,17 +550,15 @@ Knex provides migration/seed management and an expressive query builder without 
 
 Explicit state machine enforced in `assignmentService.js`. Prevents invalid transitions, makes role-based access auditable, and documents business rules in a single place. Open-ended status fields with role middleware only are too easy to misuse.
 
-### ADR-008: JWT Auth + Token Versioning *(future implementation)*
+### ADR-008: JWT Auth + Token Versioning
 
-> **Not yet implemented.** `jsonwebtoken` is a dependency but JWT auth is not wired into the middleware or login flow. Documented here as the planned design.
-
-JWT to be added as a parallel auth method for Valkyrie (mobile). Sessions/cookies are unreliable in React Native; JWT in SecureStore is the standard mobile pattern. Sessions remain the auth mechanism for Thor — no migration needed.
+JWT added as a parallel auth method for Valkyrie (mobile). Sessions/cookies are unreliable in React Native; JWT in SecureStore is the standard mobile pattern. Sessions remain the auth mechanism for Thor — no migration needed.
 
 Single long-lived token (30 days, HS256) rather than access + refresh token pair. The app is household-internal; short-lived tokens add complexity with no meaningful security benefit at this scale.
 
 Token revocation via `token_version` column on `users` rather than a token blacklist. Blacklists require storage and lookups that grow unbounded; version checking is a single indexed primary-key lookup per request. Version is incremented on PIN change or intentional mobile logout — both represent a deliberate "sign out everywhere" intent.
 
-Thor logout deliberately will not increment `token_version`. Thor auto-logs out on inactivity; invalidating mobile tokens on every kiosk timeout would be a poor UX. The two clients have independent session lifecycles.
+Thor logout deliberately does not increment `token_version`. Thor auto-logs out on inactivity; invalidating mobile tokens on every kiosk timeout would be a poor UX. The two clients have independent session lifecycles.
 
 ### ADR-007: Household Entity
 

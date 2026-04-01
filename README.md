@@ -36,7 +36,6 @@ DB_USER=your_db_user
 DB_PASSWORD=your_db_password
 SESSION_SECRET=a_long_random_string
 CLIENT_URL=http://localhost:3333  # CORS origin — set to your frontend's URL
-# JWT_SECRET= Future implementation
 ```
 
 ---
@@ -56,11 +55,8 @@ npx knex migrate:latest
 # Seed with test data
 npx knex seed:run
 
-# Start the development server (auto-restart on file changes)
-npm run dev
-
-# Or start without auto-restart (use this in production)
-npm start
+# Start the development server
+node src/server.js
 ```
 
 API is available at `http://localhost:8080`.
