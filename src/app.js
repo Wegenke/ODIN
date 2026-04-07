@@ -8,6 +8,7 @@ const db = require('./db')
 
 const scheduleRouter = require('./routes/schedules')
 const parentTaskRouter = require('./routes/parentTasks')
+const adjustmentRouter = require('./routes/adjustments')
 const { getSetupStatus,  setup } = require('./controllers/setupController')
 const authRouter = require('./routes/auth')
 const userRouter = require('./routes/users')
@@ -64,6 +65,7 @@ app.use('/transactions', transactionRouter)
 app.use('/dashboard', dashboardRouter)
 app.use('/schedules', scheduleRouter)
 app.use('/parent-tasks', parentTaskRouter)
+app.use('/adjustments', adjustmentRouter)
 
 app.get('/health', async (req, res) => {
   try{
