@@ -214,6 +214,18 @@ const reassignAssignment = async (req,res) =>{
   }
 }
 
+const parentStartAssignment = async (req,res) =>{
+  try{
+    const {id} = req.params
+    const {household_id} = req.user
+    const assignment = await assignmentService.parentStartAssignment(id, household_id)
+    return res.status(200).json(assignment)
+  }catch(err){
+    if(err.status) return res.status(err.status).json({message:err.message})
+  return res.status(500).json({message:"Server error"})
+  }
+}
+
 const parentPauseAssignment = async (req,res) =>{
   try{
     const {id} = req.params
@@ -268,4 +280,4 @@ const unassignAssignment = async (req,res) =>{
   }
 }
 
-module.exports = {getAssignments, getMyAssignments, createAssignment, submitAssignment, approveAssignment, rejectAssignment, addComment, getComments, dismissAssignment, startAssignment, pauseAssignment, resumeAssignment, resumeRejectedAssignment, cancelAssignment, reassignAssignment, parentPauseAssignment, pauseAllActive, claimAssignment, getAvailableAssignments, assignAssignment, unassignAssignment}
+module.exports = {getAssignments, getMyAssignments, createAssignment, submitAssignment, approveAssignment, rejectAssignment, addComment, getComments, dismissAssignment, startAssignment, pauseAssignment, resumeAssignment, resumeRejectedAssignment, cancelAssignment, reassignAssignment, parentStartAssignment, parentPauseAssignment, pauseAllActive, claimAssignment, getAvailableAssignments, assignAssignment, unassignAssignment}

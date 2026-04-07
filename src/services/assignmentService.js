@@ -508,6 +508,27 @@ const reassignAssignment = async (id, reviewer_id, household_id, child_id, comme
   return {updated_assignment, assignment_comment}
 }
 
+const parentStartAssignment = async (id, household_id) => {
+  const assignment = await knex('chore_assignments')
+    .join('chores', 'chore_assignments.chore_id', 'chores.id')
+    .where({'chore_assignments.id': id, 'chores.household_id': household_id})
+    .select('chore_assignments.*')
+    .first()
+
+  if(!assignment) throw Object.assign(new Error('Assignment not found'), {status: 404})
+  if(assignment.status !== 'assigned') throw Object.assign(new Error('Assignment status not ASSIGNED'), {status: 400})
+
+  const [started_assignment] = await knex('chore_assignments')
+    .where({id})
+    .update({
+      status:'in_progress',
+      started_at: knex.fn.now()
+    })
+    .returning('*')
+
+  return started_assignment
+}
+
 const parentPauseAssignment = async (id, reviewer_id, household_id, comment) => {
   const assignment = await knex('chore_assignments')
     .join('chores', 'chore_assignments.chore_id', 'chores.id')
@@ -664,4 +685,4 @@ const unassignAssignment = async (id, reviewer_id, household_id, comment) => {
   return {updated_assignment, assignment_comment}
 }
 
-module.exports = {getAssignments, getMyAssignments, createAssignment, submitAssignment, approveAssignment, rejectAssignment, addComment, getComments, dismissAssignment, startAssignment, pauseAssignment, resumeAssignment, resumeRejectedAssignment, cancelAssignment, reassignAssignment, parentPauseAssignment, pauseAllActive, claimAssignment, getAvailableAssignments, assignAssignment, unassignAssignment}
+module.exports = {getAssignments, getMyAssignments, createAssignment, submitAssignment, approveAssignment, rejectAssignment, addComment, getComments, dismissAssignment, startAssignment, pauseAssignment, resumeAssignment, resumeRejectedAssignment, cancelAssignment, reassignAssignment, parentStartAssignment, parentPauseAssignment, pauseAllActive, claimAssignment, getAvailableAssignments, assignAssignment, unassignAssignment}
