@@ -1,6 +1,6 @@
 const knex = require('../db')
 
-const getMyTransactions = async (child_id, { page = 1, limit = 20, source } = {}) => {
+const getMyTransactions = async (child_id, { page = 1, limit = 10, source } = {}) => {
   const offset = (page - 1) * limit
   const query = knex('transactions')
     .where({ 'transactions.child_id': child_id })
@@ -19,7 +19,7 @@ const getMyTransactions = async (child_id, { page = 1, limit = 20, source } = {}
     })
     .select('transactions.*', knex.raw("COALESCE(chores.title, rewards.name, point_adjustments.reason) as reference_title"))
 
-  if (source) query.andWhere({ source })
+  if (source) query.andWhere({ 'transactions.source': source })
 
   const [{ count }] = await query.clone()
     .clearSelect()
@@ -43,7 +43,7 @@ const getMyTransactions = async (child_id, { page = 1, limit = 20, source } = {}
   }
 
 }
-const getTransactionsByChild = async (child_id, household_id, { page = 1, limit = 20, source } = {}) => {
+const getTransactionsByChild = async (child_id, household_id, { page = 1, limit = 10, source } = {}) => {
   const offset = (page - 1) * limit
   const query = knex('transactions')
     .join('users', 'transactions.child_id', 'users.id')
@@ -63,7 +63,7 @@ const getTransactionsByChild = async (child_id, household_id, { page = 1, limit 
     })
     .select('transactions.*', knex.raw("COALESCE(chores.title, rewards.name, point_adjustments.reason) as reference_title"))
 
-  if (source) query.andWhere({ source })
+  if (source) query.andWhere({ 'transactions.source': source })
 
   const [{ count }] = await query.clone()
     .clearSelect()
@@ -86,7 +86,7 @@ const getTransactionsByChild = async (child_id, household_id, { page = 1, limit 
   }
 
 }
-const getHouseholdTransactions = async (household_id, { page = 1, limit = 20, source } = {}) => {
+const getHouseholdTransactions = async (household_id, { page = 1, limit = 10, source } = {}) => {
   const offset = (page -1) * limit
   const query = knex('transactions')
     .join('users', 'transactions.child_id', 'users.id')
@@ -112,7 +112,7 @@ const getHouseholdTransactions = async (household_id, { page = 1, limit = 20, so
     )
 
 
-  if (source) query.andWhere({ source })
+  if (source) query.andWhere({ 'transactions.source': source })
 
   const [{ count }] = await query.clone()
     .clearSelect()

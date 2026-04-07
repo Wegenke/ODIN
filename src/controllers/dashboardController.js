@@ -34,4 +34,15 @@ const viewChildDashboard = async (req, res) => {
   }
 }
 
-module.exports = {getParentDashboard, getChildDashboard, viewChildDashboard}
+const getChildSummary = async (req, res) => {
+  try {
+    const { id, household_id } = req.user
+    const summary = await dashboardService.getChildSummary(id, household_id)
+    return res.status(200).json(summary)
+  } catch (err) {
+    if (err.status) return res.status(err.status).json({ message: err.message })
+    return res.status(500).json({ message: 'Server error' })
+  }
+}
+
+module.exports = {getParentDashboard, getChildDashboard, viewChildDashboard, getChildSummary}

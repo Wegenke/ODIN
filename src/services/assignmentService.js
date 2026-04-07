@@ -220,7 +220,7 @@ const addComment = async (assignment_id, user_id, comment, household_id) => {
   const assignment = await knex('chore_assignments')
     .join('chores', 'chore_assignments.chore_id', 'chores.id')
     .where({'chore_assignments.id': assignment_id, 'chores.household_id': household_id})
-    .select('chore_assignments.id')
+    .select('chore_assignments.*')
     .first()
 
   if (!assignment) throw Object.assign(new Error('Assignment not found'), {status: 404})
@@ -233,6 +233,15 @@ const addComment = async (assignment_id, user_id, comment, household_id) => {
     created_at: knex.fn.now()
   })
   .returning('*')
+
+  // Auto-dismiss missed chores after child comments
+  const startOfToday = new Date()
+  startOfToday.setHours(0, 0, 0, 0)
+  if (assignment.status === 'assigned' && new Date(assignment.assigned_at) < startOfToday) {
+    await knex('chore_assignments')
+      .where({ id: assignment_id })
+      .update({ status: 'dismissed', completed_at: knex.fn.now() })
+  }
 
   return assignment_comment
 }
@@ -685,4 +694,36 @@ const unassignAssignment = async (id, reviewer_id, household_id, comment) => {
   return {updated_assignment, assignment_comment}
 }
 
-module.exports = {getAssignments, getMyAssignments, createAssignment, submitAssignment, approveAssignment, rejectAssignment, addComment, getComments, dismissAssignment, startAssignment, pauseAssignment, resumeAssignment, resumeRejectedAssignment, cancelAssignment, reassignAssignment, parentStartAssignment, parentPauseAssignment, pauseAllActive, claimAssignment, getAvailableAssignments, assignAssignment, unassignAssignment}
+const getMissedAssignments = async (household_id, { page = 1, limit = 10 } = {}) => {
+  const offset = (page - 1) * limit
+  const query = knex('chore_assignments')
+    .join('chores', 'chore_assignments.chore_id', 'chores.id')
+    .leftJoin('users', 'chore_assignments.child_id', 'users.id')
+    .where({ 'chores.household_id': household_id, 'chore_assignments.status': 'dismissed' })
+    .whereNull('chore_assignments.started_at')
+    .select(
+      'chore_assignments.id',
+      'chore_assignments.assigned_at',
+      'chore_assignments.completed_at',
+      'chores.title as chore_title',
+      'chores.emoji',
+      'chores.points',
+      'users.name as child_name',
+      'users.avatar as child_avatar'
+    )
+
+  const [{ count }] = await query.clone().clearSelect().count('chore_assignments.id as count')
+  const total = parseInt(count)
+
+  const data = await query
+    .orderBy('chore_assignments.completed_at', 'desc')
+    .limit(limit)
+    .offset(offset)
+
+  return {
+    data,
+    pagination: { total, page, limit, totalPages: Math.ceil(total / limit) }
+  }
+}
+
+module.exports = {getAssignments, getMyAssignments, createAssignment, submitAssignment, approveAssignment, rejectAssignment, addComment, getComments, dismissAssignment, startAssignment, pauseAssignment, resumeAssignment, resumeRejectedAssignment, cancelAssignment, reassignAssignment, parentStartAssignment, parentPauseAssignment, pauseAllActive, claimAssignment, getAvailableAssignments, assignAssignment, unassignAssignment, getMissedAssignments}

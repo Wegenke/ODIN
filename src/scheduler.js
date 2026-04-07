@@ -2,6 +2,37 @@ const cron = require('node-cron')
 const knex = require('./db')
 const { TERMINAL_STATES } = require('./services/scheduleService')
 
+const dismissMissedAssignments = async () => {
+  const yesterday = new Date()
+  yesterday.setDate(yesterday.getDate() - 1)
+  yesterday.setHours(0, 0, 0, 0)
+
+  const stale = await knex('chore_assignments')
+    .where({ status: 'assigned' })
+    .where('assigned_at', '<', yesterday)
+    .select('id', 'chore_id', 'child_id')
+
+  for (const assignment of stale) {
+    await knex('chore_assignments')
+      .where({ id: assignment.id })
+      .update({ status: 'dismissed', completed_at: knex.fn.now() })
+
+    await knex('assignment_comments')
+      .insert({
+        assignment_id: assignment.id,
+        user_id: assignment.child_id,
+        comment: 'Missed — not completed',
+        created_at: knex.fn.now()
+      })
+
+    console.log(`[scheduler] Auto-dismissed missed assignment ${assignment.id} (chore ${assignment.chore_id}, child ${assignment.child_id})`)
+  }
+
+  if (stale.length > 0) {
+    console.log(`[scheduler] Dismissed ${stale.length} missed assignment(s)`)
+  }
+}
+
 const runScheduler = async () => {
   const now = new Date()
   const dayOfWeek = now.getDay()
@@ -34,6 +65,7 @@ const runScheduler = async () => {
 cron.schedule('0 3 * * *', async () => {
   console.log('[scheduler] Running daily chore schedule check...')
   try {
+    await dismissMissedAssignments()
     await runScheduler()
     console.log('[scheduler] Complete.')
   } catch (err) {
@@ -43,4 +75,4 @@ cron.schedule('0 3 * * *', async () => {
 
 console.log('[scheduler] Initialized — runs daily at 3:00am')
 
-module.exports = { runScheduler }
+module.exports = { runScheduler, dismissMissedAssignments }

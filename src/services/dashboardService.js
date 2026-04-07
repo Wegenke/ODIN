@@ -118,7 +118,9 @@ const getChildDashboard = async (child_id, household_id) => {
         'chores.emoji',
         'chores.points',
         'chores.description',
-        'chore_schedules.frequency'
+        'chore_schedules.frequency',
+        'chore_schedules.day_of_week',
+        'chore_schedules.day_of_month'
       ),
 
     knex('rewards')
@@ -166,4 +168,153 @@ const getChildDashboard = async (child_id, household_id) => {
 }
 
 
-module.exports = { getParentDashboard, getChildDashboard }
+const getChildSummary = async (child_id, household_id) => {
+  const now = new Date()
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  const startOfWeek = new Date(startOfToday)
+  startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay())
+  const endOfWeek = new Date(startOfWeek)
+  endOfWeek.setDate(endOfWeek.getDate() + 7)
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
+  const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1)
+  const threeDaysAgo = new Date(startOfToday)
+  threeDaysAgo.setDate(threeDaysAgo.getDate() - 3)
+
+  const [missed, today, thisWeek, thisMonth, recentlyCompleted, rewards, myContributions] = await Promise.all([
+    // Missed: assigned before today, still in assigned status
+    knex('chore_assignments')
+      .join('chores', 'chore_assignments.chore_id', 'chores.id')
+      .leftJoin('chore_schedules', function () {
+        this.on('chore_schedules.chore_id', 'chores.id')
+            .andOn('chore_schedules.child_id', 'chore_assignments.child_id')
+      })
+      .where({ 'chore_assignments.child_id': child_id, 'chore_assignments.status': 'assigned' })
+      .where('chore_assignments.assigned_at', '<', startOfToday)
+      .select(
+        'chore_assignments.id', 'chore_assignments.status', 'chore_assignments.assigned_at',
+        'chores.title as chore_title', 'chores.emoji', 'chores.points', 'chores.description',
+        'chore_schedules.frequency', 'chore_schedules.day_of_week', 'chore_schedules.day_of_month'
+      )
+      .orderBy('chore_assignments.assigned_at', 'asc'),
+
+    // Today: daily and one-time (non-recurring) chores assigned today
+    knex('chore_assignments')
+      .join('chores', 'chore_assignments.chore_id', 'chores.id')
+      .leftJoin('chore_schedules', function () {
+        this.on('chore_schedules.chore_id', 'chores.id')
+            .andOn('chore_schedules.child_id', 'chore_assignments.child_id')
+      })
+      .where({ 'chore_assignments.child_id': child_id })
+      .whereIn('chore_assignments.status', ['assigned', 'in_progress', 'paused', 'parent_paused', 'submitted', 'rejected'])
+      .where('chore_assignments.assigned_at', '>=', startOfToday)
+      .where(function () {
+        this.whereNull('chore_schedules.frequency')
+            .orWhere('chore_schedules.frequency', 'daily')
+      })
+      .select(
+        'chore_assignments.id', 'chore_assignments.status',
+        'chores.title as chore_title', 'chores.emoji', 'chores.points',
+        'chore_schedules.frequency', 'chore_schedules.day_of_week', 'chore_schedules.day_of_month'
+      )
+      .orderBy('chore_assignments.assigned_at', 'asc'),
+
+    // This week: weekly chores assigned this week (including today)
+    knex('chore_assignments')
+      .join('chores', 'chore_assignments.chore_id', 'chores.id')
+      .leftJoin('chore_schedules', function () {
+        this.on('chore_schedules.chore_id', 'chores.id')
+            .andOn('chore_schedules.child_id', 'chore_assignments.child_id')
+      })
+      .where({ 'chore_assignments.child_id': child_id })
+      .whereIn('chore_assignments.status', ['assigned', 'in_progress', 'paused', 'parent_paused', 'submitted', 'rejected'])
+      .where('chore_assignments.assigned_at', '>=', startOfWeek)
+      .where('chore_schedules.frequency', 'weekly')
+      .select(
+        'chore_assignments.id', 'chore_assignments.status',
+        'chores.title as chore_title', 'chores.emoji', 'chores.points',
+        'chore_schedules.frequency', 'chore_schedules.day_of_week', 'chore_schedules.day_of_month'
+      )
+      .orderBy('chore_assignments.assigned_at', 'asc'),
+
+    // This month: monthly chores assigned this month (including today)
+    knex('chore_assignments')
+      .join('chores', 'chore_assignments.chore_id', 'chores.id')
+      .leftJoin('chore_schedules', function () {
+        this.on('chore_schedules.chore_id', 'chores.id')
+            .andOn('chore_schedules.child_id', 'chore_assignments.child_id')
+      })
+      .where({ 'chore_assignments.child_id': child_id })
+      .whereIn('chore_assignments.status', ['assigned', 'in_progress', 'paused', 'parent_paused', 'submitted', 'rejected'])
+      .where('chore_assignments.assigned_at', '>=', startOfMonth)
+      .where('chore_schedules.frequency', 'monthly')
+      .select(
+        'chore_assignments.id', 'chore_assignments.status',
+        'chores.title as chore_title', 'chores.emoji', 'chores.points',
+        'chore_schedules.frequency', 'chore_schedules.day_of_week', 'chore_schedules.day_of_month'
+      )
+      .orderBy('chore_assignments.assigned_at', 'asc'),
+
+    // Recently completed: approved in last 3 days
+    knex('chore_assignments')
+      .join('chores', 'chore_assignments.chore_id', 'chores.id')
+      .where({ 'chore_assignments.child_id': child_id, 'chore_assignments.status': 'approved' })
+      .where('chore_assignments.completed_at', '>=', threeDaysAgo)
+      .select(
+        'chore_assignments.id', 'chore_assignments.completed_at',
+        'chores.title as chore_title', 'chores.emoji', 'chores.points'
+      )
+      .orderBy('chore_assignments.completed_at', 'desc'),
+
+    // Rewards for closest reward calc
+    knex('rewards')
+      .leftJoin('reward_contributions', 'rewards.id', 'reward_contributions.reward_id')
+      .where({ 'rewards.household_id': household_id, 'rewards.status': 'active' })
+      .select('rewards.*', knex.raw('COALESCE(SUM(reward_contributions.points), 0) as contributed_total'))
+      .groupBy('rewards.id'),
+
+    // My contributions
+    knex('reward_contributions')
+      .join('rewards', 'reward_contributions.reward_id', 'rewards.id')
+      .where({ 'reward_contributions.child_id': child_id, 'rewards.household_id': household_id, 'rewards.status': 'active' })
+      .select('reward_contributions.reward_id', 'reward_contributions.points')
+  ])
+
+  // Build contribution map for this child
+  const myContribMap = {}
+  for (const c of myContributions) {
+    if (!myContribMap[c.reward_id]) myContribMap[c.reward_id] = 0
+    myContribMap[c.reward_id] += c.points
+  }
+
+  // Find closest "my" reward (created by this child) and closest "shared" reward
+  let closestMine = null
+  let closestMineRatio = -1
+  let closestShared = null
+  let closestSharedRatio = -1
+
+  for (const r of rewards) {
+    const myContrib = myContribMap[r.id] || 0
+    if (myContrib === 0) continue
+    const remaining = r.points_required - parseInt(r.contributed_total)
+    if (remaining <= 0) continue
+    const ratio = myContrib / r.points_required
+    const entry = {
+      id: r.id,
+      name: r.name,
+      points_required: r.points_required,
+      my_contribution: myContrib,
+      contributed_total: parseInt(r.contributed_total),
+      remaining
+    }
+
+    if (r.created_by === child_id) {
+      if (ratio > closestMineRatio) { closestMineRatio = ratio; closestMine = entry }
+    } else {
+      if (ratio > closestSharedRatio) { closestSharedRatio = ratio; closestShared = entry }
+    }
+  }
+
+  return { missed, today, thisWeek, thisMonth, recentlyCompleted, closestMine, closestShared }
+}
+
+module.exports = { getParentDashboard, getChildDashboard, getChildSummary }
