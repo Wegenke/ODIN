@@ -2,7 +2,7 @@ const choreService = require('../services/choreService')
 
 const getChores = async (req,res) => {
   try{
-    const {household_id} = req.session.user
+    const {household_id} = req.user
     const chores = await choreService.getChores(household_id)
     return res.status(200).json(chores)
   }catch(err){
@@ -13,7 +13,7 @@ const getChores = async (req,res) => {
 
 const createChore = async (req,res) => {
   try{
-    const {id, household_id} = req.session.user
+    const {id, household_id} = req.user
     const {title, points, description, emoji} = req.body
 
     const chore = await choreService.createChore({created_by:id, household_id, title, points, description, emoji})
@@ -27,7 +27,7 @@ const createChore = async (req,res) => {
 const updateChore = async (req,res) => {
   try{
     const {id} = req.params
-    const {household_id} = req.session.user
+    const {household_id} = req.user
     const chore = await choreService.updateChore(id, household_id,req.body)
     return res.status(200).json(chore)
   }catch(err){

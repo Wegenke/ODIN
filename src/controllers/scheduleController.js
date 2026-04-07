@@ -2,7 +2,7 @@ const scheduleService = require('../services/scheduleService')
 
 const createSchedule = async (req, res) => {
   try {
-    const { household_id } = req.session.user
+    const { household_id } = req.user
     const result = await scheduleService.createSchedule(req.body, household_id)
     return res.status(201).json(result)
   } catch (err) {
@@ -13,7 +13,7 @@ const createSchedule = async (req, res) => {
 
 const getSchedules = async (req, res) => {
   try {
-    const { household_id } = req.session.user
+    const { household_id } = req.user
     const schedules = await scheduleService.getSchedulesByHousehold(household_id)
     return res.json(schedules)
   } catch (err) {
@@ -24,7 +24,7 @@ const getSchedules = async (req, res) => {
 
 const getSchedulesByChore = async (req, res) => {
   try {
-    const { household_id } = req.session.user
+    const { household_id } = req.user
     const chore_id = Number(req.params.chore_id)
     const schedules = await scheduleService.getSchedulesByChore(chore_id, household_id)
     return res.json(schedules)
@@ -36,7 +36,7 @@ const getSchedulesByChore = async (req, res) => {
 
 const updateSchedule = async (req, res) => {
   try {
-    const { household_id } = req.session.user
+    const { household_id } = req.user
     const id = Number(req.params.id)
     const schedule = await scheduleService.updateSchedule(id, req.body, household_id)
     return res.json(schedule)
@@ -48,7 +48,7 @@ const updateSchedule = async (req, res) => {
 
 const deleteSchedule = async (req, res) => {
   try {
-    const { household_id } = req.session.user
+    const { household_id } = req.user
     const id = Number(req.params.id)
     await scheduleService.deleteSchedule(id, household_id)
     return res.json({ message: 'Schedule deleted' })

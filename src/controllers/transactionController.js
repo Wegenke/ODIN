@@ -2,7 +2,7 @@ const transactionService = require('../services/transactionsService')
 
 const getMyTransactions = async (req,res) => {
   try{
-    const {id} = req.session.user
+    const {id} = req.user
     const transactions = await transactionService.getMyTransactions(id,req.query)
     return res.status(200).json(transactions)
   }catch(err){
@@ -13,7 +13,7 @@ const getMyTransactions = async (req,res) => {
 
 const getTransactionsByChild = async (req,res) => {
   try{
-    const {household_id} = req.session.user
+    const {household_id} = req.user
     const transactions = await transactionService.getTransactionsByChild(req.params.id, household_id,req.query)
     return res.status(200).json(transactions)
   }catch(err){
@@ -24,7 +24,7 @@ const getTransactionsByChild = async (req,res) => {
 
 const getHouseholdTransactions = async (req,res) => {
   try{
-    const {household_id} = req.session.user
+    const {household_id} = req.user
     const transactions = await transactionService.getHouseholdTransactions(household_id,req.query)
     return res.status(200).json(transactions)
   }catch(err){

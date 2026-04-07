@@ -2,7 +2,7 @@ const dashboardService = require('../services/dashboardService')
 
 const getParentDashboard = async (req,res) =>{
   try{
-    const {household_id} = req.session.user
+    const {household_id} = req.user
     const dashboard = await dashboardService.getParentDashboard(household_id)
     return res.status(200).json(dashboard)
   }catch(err){
@@ -13,7 +13,7 @@ const getParentDashboard = async (req,res) =>{
 
 const getChildDashboard = async (req,res) =>{
   try{
-    const {id,household_id} = req.session.user
+    const {id,household_id} = req.user
     const dashboard = await dashboardService.getChildDashboard(id,household_id)
     return res.status(200).json(dashboard)
   }catch(err){

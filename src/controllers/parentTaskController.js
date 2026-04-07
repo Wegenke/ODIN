@@ -2,7 +2,7 @@ const parentTaskService = require('../services/parentTaskService')
 
 const getTasks = async (req, res) => {
   try {
-    const { household_id } = req.session.user
+    const { household_id } = req.user
     const tasks = await parentTaskService.getTasks(household_id)
     return res.json(tasks)
   } catch (err) {
@@ -13,7 +13,7 @@ const getTasks = async (req, res) => {
 
 const getRecentlyCompleted = async (req, res) => {
   try {
-    const { household_id } = req.session.user
+    const { household_id } = req.user
     const tasks = await parentTaskService.getRecentlyCompleted(household_id)
     return res.json(tasks)
   } catch (err) {
@@ -24,7 +24,7 @@ const getRecentlyCompleted = async (req, res) => {
 
 const createTask = async (req, res) => {
   try {
-    const { household_id, id } = req.session.user
+    const { household_id, id } = req.user
     const task = await parentTaskService.createTask(req.body, household_id, id)
     return res.status(201).json(task)
   } catch (err) {
@@ -35,7 +35,7 @@ const createTask = async (req, res) => {
 
 const updateTask = async (req, res) => {
   try {
-    const { household_id } = req.session.user
+    const { household_id } = req.user
     const id = Number(req.params.id)
     const task = await parentTaskService.updateTask(id, req.body, household_id)
     return res.json(task)
@@ -47,7 +47,7 @@ const updateTask = async (req, res) => {
 
 const startTask = async (req, res) => {
   try {
-    const { household_id, id: userId } = req.session.user
+    const { household_id, id: userId } = req.user
     const id = Number(req.params.id)
     const task = await parentTaskService.startTask(id, household_id, userId)
     return res.json(task)
@@ -59,7 +59,7 @@ const startTask = async (req, res) => {
 
 const pauseTask = async (req, res) => {
   try {
-    const { household_id } = req.session.user
+    const { household_id } = req.user
     const id = Number(req.params.id)
     const task = await parentTaskService.pauseTask(id, household_id)
     return res.json(task)
@@ -71,7 +71,7 @@ const pauseTask = async (req, res) => {
 
 const archiveTask = async (req, res) => {
   try {
-    const { household_id } = req.session.user
+    const { household_id } = req.user
     const id = Number(req.params.id)
     const task = await parentTaskService.archiveTask(id, household_id)
     return res.json(task)
@@ -83,7 +83,7 @@ const archiveTask = async (req, res) => {
 
 const reorderTasks = async (req, res) => {
   try {
-    const { household_id } = req.session.user
+    const { household_id } = req.user
     await parentTaskService.reorderTasks(req.body.ids, household_id)
     return res.json({ message: 'Order updated' })
   } catch (err) {
@@ -94,7 +94,7 @@ const reorderTasks = async (req, res) => {
 
 const getNotes = async (req, res) => {
   try {
-    const { household_id } = req.session.user
+    const { household_id } = req.user
     const id = Number(req.params.id)
     const notes = await parentTaskService.getNotes(id, household_id)
     return res.json(notes)
@@ -106,7 +106,7 @@ const getNotes = async (req, res) => {
 
 const addNote = async (req, res) => {
   try {
-    const { household_id, id: userId } = req.session.user
+    const { household_id, id: userId } = req.user
     const id = Number(req.params.id)
     const note = await parentTaskService.addNote(id, req.body.content, household_id, userId)
     return res.status(201).json(note)
