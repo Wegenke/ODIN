@@ -13,7 +13,11 @@ const getMyTransactions = async (child_id, { page = 1, limit = 20, source } = {}
       this.on('transactions.reference_id', 'rewards.id')
         .andOnIn('transactions.source', ['reward_contribution', 'reward_refund'])
     })
-    .select('transactions.*', knex.raw("COALESCE(chores.title, rewards.name) as reference_title"))
+    .leftJoin('point_adjustments', function () {
+      this.on('transactions.reference_id', 'point_adjustments.id')
+        .andOnIn('transactions.source', ['adjustment_reward', 'adjustment_penalty'])
+    })
+    .select('transactions.*', knex.raw("COALESCE(chores.title, rewards.name, point_adjustments.reason) as reference_title"))
 
   if (source) query.andWhere({ source })
 
@@ -53,7 +57,11 @@ const getTransactionsByChild = async (child_id, household_id, { page = 1, limit 
       this.on('transactions.reference_id', 'rewards.id')
         .andOnIn('transactions.source', ['reward_contribution', 'reward_refund'])
     })
-    .select('transactions.*', knex.raw("COALESCE(chores.title, rewards.name) as reference_title"))
+    .leftJoin('point_adjustments', function () {
+      this.on('transactions.reference_id', 'point_adjustments.id')
+        .andOnIn('transactions.source', ['adjustment_reward', 'adjustment_penalty'])
+    })
+    .select('transactions.*', knex.raw("COALESCE(chores.title, rewards.name, point_adjustments.reason) as reference_title"))
 
   if (source) query.andWhere({ source })
 
@@ -92,11 +100,15 @@ const getHouseholdTransactions = async (household_id, { page = 1, limit = 20, so
       this.on('transactions.reference_id', 'rewards.id')
         .andOnIn('transactions.source', ['reward_contribution', 'reward_refund'])
     })
+    .leftJoin('point_adjustments', function () {
+      this.on('transactions.reference_id', 'point_adjustments.id')
+        .andOnIn('transactions.source', ['adjustment_reward', 'adjustment_penalty'])
+    })
     .select(
       'transactions.*',
       'users.name as child_name',
       'users.avatar as child_avatar',
-      knex.raw("COALESCE(chores.title, rewards.name) as reference_title")
+      knex.raw("COALESCE(chores.title, rewards.name, point_adjustments.reason) as reference_title")
     )
 
 
