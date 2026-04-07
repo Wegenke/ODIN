@@ -105,6 +105,10 @@ const getChildDashboard = async (child_id, household_id) => {
 
     knex('chore_assignments')
       .join('chores', 'chore_assignments.chore_id', 'chores.id')
+      .leftJoin('chore_schedules', function () {
+        this.on('chore_schedules.chore_id', 'chores.id')
+            .andOn('chore_schedules.child_id', 'chore_assignments.child_id')
+      })
       .where({ 'chore_assignments.child_id': child_id })
       .whereIn('chore_assignments.status', ['assigned', 'in_progress', 'paused', 'parent_paused', 'submitted', 'rejected'])
       .select(
@@ -113,7 +117,8 @@ const getChildDashboard = async (child_id, household_id) => {
         'chores.title as chore_title',
         'chores.emoji',
         'chores.points',
-        'chores.description'
+        'chores.description',
+        'chore_schedules.frequency'
       ),
 
     knex('rewards')
