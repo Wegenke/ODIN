@@ -1,100 +1,41 @@
 /**
  * Transactions and points_balance updates.
  *
- * Eldest (3): earned 50 (10+30+10), spent 40 (10+20+10) → balance 10
- * Youngest (4): earned 80 (10+50+20), spent 60 (10+10+20+20) → balance 20
+ * Bart (3): earned 60 (10+30+10+10), spent 40 (10+20+10), adjustment -15 → balance 5
+ * Lisa (4): earned 90 (10+50+20+10), spent 60 (10+10+20+20), adjustment +25 → balance 55
  *
  * @param { import("knex").Knex } knex
  * @returns { Promise<void> }
  */
 exports.seed = async function(knex) {
+  const now = new Date()
+  const h = (hours) => new Date(now - hours * 3600000).toISOString()
+
   await knex('transactions').insert([
     // --- chore_approved ---
-    { // assignment 1: make bed (10pts), Eldest
-      child_id: 3,
-      amount: 10,
-      source: 'chore_approved',
-      reference_id: 1,
-      created_at: '2026-03-01T08:00:00Z'
-    },{ // assignment 2: make bed (10pts), Youngest
-      child_id: 4,
-      amount: 10,
-      source: 'chore_approved',
-      reference_id: 2,
-      created_at: '2026-03-01T08:10:00Z'
-    },{ // assignment 16: homework (30pts), Eldest
-      child_id: 3,
-      amount: 30,
-      source: 'chore_approved',
-      reference_id: 16,
-      created_at: '2026-02-28T17:00:00Z'
-    },{ // assignment 17: take out trash (10pts), Eldest
-      child_id: 3,
-      amount: 10,
-      source: 'chore_approved',
-      reference_id: 17,
-      created_at: '2026-02-28T16:30:00Z'
-    },{ // assignment 12: clean bathroom (50pts), Youngest
-      child_id: 4,
-      amount: 50,
-      source: 'chore_approved',
-      reference_id: 12,
-      created_at: '2026-03-02T11:00:00Z'
-    },{ // assignment 18: do dishes (20pts), Youngest
-      child_id: 4,
-      amount: 20,
-      source: 'chore_approved',
-      reference_id: 18,
-      created_at: '2026-03-03T18:15:00Z'
-    },
+    { child_id: 3, amount: 10, source: 'chore_approved', reference_id: 1, created_at: h(21) },
+    { child_id: 4, amount: 10, source: 'chore_approved', reference_id: 2, created_at: h(20) },
+    { child_id: 3, amount: 30, source: 'chore_approved', reference_id: 16, created_at: h(70) },
+    { child_id: 3, amount: 10, source: 'chore_approved', reference_id: 17, created_at: h(48) },
+    { child_id: 4, amount: 50, source: 'chore_approved', reference_id: 12, created_at: h(48) },
+    { child_id: 4, amount: 20, source: 'chore_approved', reference_id: 18, created_at: h(24) },
 
     // --- reward_contribution ---
-    { // reward 4 (Movie Night) — Eldest
-      child_id: 3,
-      amount: -10,
-      source: 'reward_contribution',
-      reference_id: 4,
-      created_at: '2026-03-02T14:00:00Z'
-    },{ // reward 4 (Movie Night) — Youngest
-      child_id: 4,
-      amount: -20,
-      source: 'reward_contribution',
-      reference_id: 4,
-      created_at: '2026-03-02T14:30:00Z'
-    },{ // reward 3 (Beast Burger) — Eldest
-      child_id: 3,
-      amount: -20,
-      source: 'reward_contribution',
-      reference_id: 3,
-      created_at: '2026-03-03T12:00:00Z'
-    },{ // reward 3 (Beast Burger) — Youngest
-      child_id: 4,
-      amount: -20,
-      source: 'reward_contribution',
-      reference_id: 3,
-      created_at: '2026-03-03T12:30:00Z'
-    },{ // reward 2 (SF6) — Eldest
-      child_id: 3,
-      amount: -10,
-      source: 'reward_contribution',
-      reference_id: 2,
-      created_at: '2026-03-04T10:00:00Z'
-    },{ // reward 2 (SF6) — Youngest
-      child_id: 4,
-      amount: -10,
-      source: 'reward_contribution',
-      reference_id: 2,
-      created_at: '2026-03-04T10:30:00Z'
-    },{ // reward 2 (SF6) — Youngest (refund requested)
-      child_id: 4,
-      amount: -10,
-      source: 'reward_contribution',
-      reference_id: 2,
-      created_at: '2026-03-05T09:00:00Z'
-    }
+    { child_id: 3, amount: -10, source: 'reward_contribution', reference_id: 4, created_at: h(60) },
+    { child_id: 4, amount: -20, source: 'reward_contribution', reference_id: 4, created_at: h(59) },
+    { child_id: 3, amount: -20, source: 'reward_contribution', reference_id: 3, created_at: h(50) },
+    { child_id: 4, amount: -20, source: 'reward_contribution', reference_id: 3, created_at: h(49) },
+    { child_id: 3, amount: -10, source: 'reward_contribution', reference_id: 2, created_at: h(40) },
+    { child_id: 4, amount: -10, source: 'reward_contribution', reference_id: 2, created_at: h(39) },
+    { child_id: 4, amount: -10, source: 'reward_contribution', reference_id: 2, created_at: h(30) },
+
+    // --- adjustments ---
+    { child_id: 3, amount: -15, source: 'adjustment_penalty', reference_id: 1, created_at: h(10) },
+    { child_id: 4, amount: 25, source: 'adjustment_reward', reference_id: 2, created_at: h(8) }
   ])
 
-  // Set points_balance to match transaction totals
-  await knex('users').where({ id: 3 }).update({ points_balance: 10 })
-  await knex('users').where({ id: 4 }).update({ points_balance: 20 })
+  // Bart: 60 earned - 40 spent - 15 penalty = 5
+  await knex('users').where({ id: 3 }).update({ points_balance: 5 })
+  // Lisa: 90 earned - 60 spent + 25 reward = 55
+  await knex('users').where({ id: 4 }).update({ points_balance: 55 })
 }

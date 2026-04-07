@@ -9,23 +9,35 @@ const createSchedule = async (data, household_id) => {
   const child = await knex('users').where({ id: data.child_id, household_id }).first()
   if (!child || child.role !== 'child') throw Object.assign(new Error('User is not a child'), { status: 400 })
 
-  const existing = await knex('chore_schedules').where({ chore_id: data.chore_id, child_id: data.child_id }).first()
-  if (existing) throw Object.assign(new Error('Schedule already exists for this chore and child'), { status: 409 })
+  const existingQuery = { chore_id: data.chore_id, child_id: data.child_id, frequency: data.frequency }
+  if (data.day_of_week != null) existingQuery.day_of_week = data.day_of_week
+  if (data.day_of_month != null) existingQuery.day_of_month = data.day_of_month
+  const existing = await knex('chore_schedules').where(existingQuery).first()
+  if (existing) throw Object.assign(new Error('Schedule already exists for this day'), { status: 409 })
 
   const [schedule] = await knex('chore_schedules')
     .insert({
       chore_id: data.chore_id,
       child_id: data.child_id,
       frequency: data.frequency,
-      day_of_week: data.day_of_week || null,
-      day_of_month: data.day_of_month || null,
+      day_of_week: data.day_of_week != null ? data.day_of_week : null,
+      day_of_month: data.day_of_month != null ? data.day_of_month : null,
       last_generated_at: knex.fn.now()
     })
     .returning('*')
 
-  const [assignment] = await knex('chore_assignments')
-    .insert({ chore_id: data.chore_id, child_id: data.child_id, status: 'assigned' })
-    .returning('*')
+  const activeAssignment = await knex('chore_assignments')
+    .where({ chore_id: data.chore_id, child_id: data.child_id })
+    .whereNotIn('status', TERMINAL_STATES)
+    .first()
+
+  let assignment = null
+  if (!activeAssignment) {
+    const [created] = await knex('chore_assignments')
+      .insert({ chore_id: data.chore_id, child_id: data.child_id, status: 'assigned' })
+      .returning('*')
+    assignment = created
+  }
 
   return { schedule, assignment }
 }
