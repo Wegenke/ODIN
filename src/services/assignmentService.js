@@ -538,6 +538,32 @@ const parentStartAssignment = async (id, household_id) => {
   return started_assignment
 }
 
+const unstartAssignment = async (id, household_id) => {
+  const assignment = await knex('chore_assignments')
+    .join('chores', 'chore_assignments.chore_id', 'chores.id')
+    .where({'chore_assignments.id': id, 'chores.household_id': household_id})
+    .select('chore_assignments.*')
+    .first()
+
+  if(!assignment) throw Object.assign(new Error('Assignment not found'), {status: 404})
+  if(!['in_progress','paused','parent_paused'].includes(assignment.status))
+    throw Object.assign(new Error('Assignment must be in progress or paused'), {status: 400})
+
+  const [updated_assignment] = await knex('chore_assignments')
+    .where({id})
+    .update({
+      status: 'assigned',
+      started_at: null,
+      paused_at: null,
+      time_paused: 0,
+      pause_count: 0,
+      submitted_at: null
+    })
+    .returning('*')
+
+  return updated_assignment
+}
+
 const parentPauseAssignment = async (id, reviewer_id, household_id, comment) => {
   const assignment = await knex('chore_assignments')
     .join('chores', 'chore_assignments.chore_id', 'chores.id')
@@ -726,4 +752,4 @@ const getMissedAssignments = async (household_id, { page = 1, limit = 10 } = {})
   }
 }
 
-module.exports = {getAssignments, getMyAssignments, createAssignment, submitAssignment, approveAssignment, rejectAssignment, addComment, getComments, dismissAssignment, startAssignment, pauseAssignment, resumeAssignment, resumeRejectedAssignment, cancelAssignment, reassignAssignment, parentStartAssignment, parentPauseAssignment, pauseAllActive, claimAssignment, getAvailableAssignments, assignAssignment, unassignAssignment, getMissedAssignments}
+module.exports = {getAssignments, getMyAssignments, createAssignment, submitAssignment, approveAssignment, rejectAssignment, addComment, getComments, dismissAssignment, startAssignment, pauseAssignment, resumeAssignment, resumeRejectedAssignment, cancelAssignment, reassignAssignment, parentStartAssignment, unstartAssignment, parentPauseAssignment, pauseAllActive, claimAssignment, getAvailableAssignments, assignAssignment, unassignAssignment, getMissedAssignments}

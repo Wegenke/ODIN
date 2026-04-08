@@ -1,7 +1,7 @@
 const knex = require('../db')
 
 const getParentDashboard = async (household_id) => {
-  const [children, submittedAssignments, pendingRewards, refundRequests, unassignedAssignments, assignmentCounts] = await Promise.all([
+  const [children, submittedAssignments, activeAssignments, pendingRewards, refundRequests, unassignedAssignments, assignmentCounts] = await Promise.all([
     knex('users')
       .where({ household_id, role: 'child' })
       .where(q => q.whereNot({ status: 'inactive' }).orWhereNull('status'))
@@ -24,6 +24,24 @@ const getParentDashboard = async (household_id) => {
         'users.name as child_name',
         'users.avatar as child_avatar'
       ),
+
+    knex('chore_assignments')
+      .join('chores', 'chore_assignments.chore_id', 'chores.id')
+      .join('users', 'chore_assignments.child_id', 'users.id')
+      .where({ 'chores.household_id': household_id })
+      .whereIn('chore_assignments.status', ['in_progress', 'paused', 'parent_paused'])
+      .select(
+        'chore_assignments.id',
+        'chore_assignments.status',
+        'chore_assignments.started_at',
+        'chores.title as chore_title',
+        'chores.emoji',
+        'chores.points',
+        'users.id as child_id',
+        'users.name as child_name',
+        'users.avatar as child_avatar'
+      )
+      .orderBy('chore_assignments.started_at', 'asc'),
 
     knex('rewards')
       .join('users', 'rewards.created_by', 'users.id')
@@ -92,7 +110,7 @@ const getParentDashboard = async (household_id) => {
     assignment_counts: countsByChild[child.id] || {}
   }))
 
-  return { children: annotatedChildren, submittedAssignments, pendingRewards, refundRequests, unassignedAssignments }
+  return { children: annotatedChildren, submittedAssignments, activeAssignments, pendingRewards, refundRequests, unassignedAssignments }
 }
 
 const getChildDashboard = async (child_id, household_id) => {
