@@ -295,8 +295,12 @@ const unassignAssignment = async (req,res) =>{
 const getMissedAssignments = async (req, res) => {
   try {
     const { household_id } = req.user
-    const { page } = req.query
-    const result = await assignmentService.getMissedAssignments(household_id, { page: Number(page) || 1 })
+    const { page, limit, child_id } = req.query
+    const result = await assignmentService.getMissedAssignments(household_id, {
+      page: Number(page) || 1,
+      limit: Number(limit) || 10,
+      ...(child_id ? { child_id: Number(child_id) } : {})
+    })
     return res.status(200).json(result)
   } catch (err) {
     if (err.status) return res.status(err.status).json({ message: err.message })

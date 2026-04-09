@@ -86,7 +86,7 @@ const getTransactionsByChild = async (child_id, household_id, { page = 1, limit 
   }
 
 }
-const getHouseholdTransactions = async (household_id, { page = 1, limit = 10, source } = {}) => {
+const getHouseholdTransactions = async (household_id, { page = 1, limit = 10, source, child_id } = {}) => {
   const offset = (page -1) * limit
   const query = knex('transactions')
     .join('users', 'transactions.child_id', 'users.id')
@@ -111,8 +111,12 @@ const getHouseholdTransactions = async (household_id, { page = 1, limit = 10, so
       knex.raw("COALESCE(chores.title, rewards.name, point_adjustments.reason) as reference_title")
     )
 
-
-  if (source) query.andWhere({ 'transactions.source': source })
+  if (source) {
+    const sources = source.split(',').filter(Boolean)
+    if (sources.length === 1) query.andWhere({ 'transactions.source': sources[0] })
+    else if (sources.length > 1) query.whereIn('transactions.source', sources)
+  }
+  if (child_id) query.andWhere({ 'transactions.child_id': child_id })
 
   const [{ count }] = await query.clone()
     .clearSelect()

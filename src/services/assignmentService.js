@@ -720,14 +720,15 @@ const unassignAssignment = async (id, reviewer_id, household_id, comment) => {
   return {updated_assignment, assignment_comment}
 }
 
-const getMissedAssignments = async (household_id, { page = 1, limit = 10 } = {}) => {
+const getMissedAssignments = async (household_id, { page = 1, limit = 10, child_id } = {}) => {
   const offset = (page - 1) * limit
   const query = knex('chore_assignments')
     .join('chores', 'chore_assignments.chore_id', 'chores.id')
     .leftJoin('users', 'chore_assignments.child_id', 'users.id')
     .where({ 'chores.household_id': household_id, 'chore_assignments.status': 'dismissed' })
     .whereNull('chore_assignments.started_at')
-    .select(
+  if (child_id) query.andWhere({ 'chore_assignments.child_id': child_id })
+  query.select(
       'chore_assignments.id',
       'chore_assignments.assigned_at',
       'chore_assignments.completed_at',

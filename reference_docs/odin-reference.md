@@ -570,6 +570,8 @@ Thor logout deliberately does not increment `token_version`. Thor auto-logs out 
 
 - **Manual point adjustments** — parent endpoint to add/subtract points directly with a `manual_adjustment` transaction
 - **Push notifications** — webhook or SSE endpoint for real-time chore approval/rejection alerts
-- **Leaderboards / streaks** — aggregation queries for gamification layer
+- **Child leaderboard endpoint** — new aggregation endpoint (e.g., `GET /dashboard/leaderboard`) that queries the `transactions` table to return points earned per child for today, yesterday, this week, and this month. Data already exists — no new tables needed, just time-bucketed aggregation queries
+- **Gamification — badges & achievements** — new schema (`badges`, `child_badges`), logic to check/award badges on chore completion (e.g., first chore, 10th chore, 7-day streak). Parked until leaderboard ships and engagement is evaluated. Start with simple count-based badges before tackling streaks or time-based achievements
+- **Database table indexing** — audit Knex migrations for missing indexes. Postgres does not auto-index foreign keys. Likely candidates: `chore_assignments.chore_id` (JOIN target for household scoping), `chore_assignments.status` (filtered on nearly every query), `chores.household_id` (filtered on every scoped query). Not urgent at current scale but sound practice — first optimization lever if query performance degrades as assignment history grows
 - **MFA for parent accounts** — optional second factor
 - **Session TTL by context** — kiosk (15min inactivity), mobile (longer, configurable)
