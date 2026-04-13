@@ -49,7 +49,20 @@ const runScheduler = async () => {
       .orderBy('assigned_at', 'desc')
       .first()
 
-    if (latest && !TERMINAL_STATES.includes(latest.status)) continue
+    if (latest && !TERMINAL_STATES.includes(latest.status)) {
+      // Submitted chores never block — child did their part
+      if (latest.status === 'submitted') { /* allow creation */ }
+      // Rejected chores always block — child must redo or parent must dismiss
+      else if (latest.status === 'rejected') continue
+      // Other non-terminal statuses block only if from today
+      else {
+        const today = new Date()
+        today.setHours(0, 0, 0, 0)
+        const assignedDate = new Date(latest.assigned_at)
+        assignedDate.setHours(0, 0, 0, 0)
+        if (assignedDate.getTime() === today.getTime()) continue
+      }
+    }
 
     await knex('chore_assignments')
       .insert({ chore_id: schedule.chore_id, child_id: schedule.child_id, status: 'assigned' })

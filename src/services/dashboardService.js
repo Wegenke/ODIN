@@ -144,7 +144,15 @@ const getChildDashboard = async (child_id, household_id) => {
         'chores.points',
         'chores.description',
         'cs.frequency'
-      ),
+      )
+      .orderByRaw(`CASE chore_assignments.status
+        WHEN 'in_progress' THEN 0
+        WHEN 'paused' THEN 1
+        WHEN 'parent_paused' THEN 2
+        WHEN 'submitted' THEN 3
+        WHEN 'rejected' THEN 4
+        WHEN 'assigned' THEN 5
+        ELSE 6 END, chore_assignments.assigned_at ASC`),
 
     knex('rewards')
       .leftJoin('reward_contributions', 'rewards.id', 'reward_contributions.reward_id')
