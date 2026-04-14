@@ -1,6 +1,6 @@
 # Odin — Backend Reference
 
-This is the single reference document for the Odin backend. It covers the database schema, API, business logic, security model, and architecture decisions. For deployment steps, see [`deployment.md`](deployment.md).
+Reference document for the Odin backend. Covers database schema, business logic, security model, and architecture decisions. For API endpoints, see [`api-endpoints.md`](api-endpoints.md). For deployment, see [`deployment.md`](deployment.md).
 
 ---
 
@@ -66,6 +66,21 @@ Notes:
 
 ---
 
+### refresh_tokens
+
+Stores hashed refresh tokens for JWT-based mobile auth. One row per active refresh token. Tokens are rotated on each refresh — the old token is revoked and a new one is issued.
+
+| Field | Type | Notes |
+|---|---|---|
+| id | PK | Auto-increment |
+| user_id | FK | → users.id, NOT NULL, CASCADE on delete |
+| token_hash | string | NOT NULL, UNIQUE. bcrypt hash of the refresh token |
+| expires_at | timestamp | NOT NULL. 30-day expiry |
+| revoked | boolean | NOT NULL, default false. Set true on rotation or explicit revocation |
+| created_at | timestamp | Default now() |
+
+---
+
 ### chores
 
 Defines chore templates.
@@ -102,6 +117,13 @@ Household scoping via JOIN to `chores` on `chore_schedules.chore_id = chores.id`
 | created_at | timestamp | Default now() |
 
 **Unique constraint:** `(chore_id, child_id)` — prevents duplicate schedules for the same chore and child.
+
+**Scheduler:** Runs daily at 3:00am via `node-cron` (`src/scheduler.js`). Two-phase process:
+
+1. **Auto-dismiss:** Finds all `assigned` chores where `assigned_at < yesterday midnight` and sets them to `dismissed` with a system comment (`"Missed — not completed"`).
+2. **Generate assignments:** For each active schedule, checks if today matches the frequency/day and if the most recent assignment for that (chore_id, child_id) pair is in a terminal state (approved, dismissed, canceled). If both conditions are met, creates a new assignment. Includes a **catch-up mechanism** with a 7-day lookback cap: if `last_generated_at` is older than today, backfills missing days with `assigned_at` set to each missed date (not today). Gaps older than 7 days are accepted as lost. On a normal day with no gaps, behavior is identical to creating a single assignment for today.
+
+**Deploy note:** When the catch-up mechanism is first deployed, update all `last_generated_at` values to the current date to prevent historical backfill.
 
 ---
 
@@ -264,7 +286,62 @@ Ledger of all point activity. This is the source of truth for point history.
 | reward_contribution | - | rewards.id |
 | reward_refund | + | rewards.id |
 | reward_redemption | - | rewards.id |
-| manual_adjustment | +/- | null or users.id |
+| manual_adjustment | +/- | point_adjustments.id |
+
+---
+
+### point_adjustments
+
+Parent-issued point rewards and penalties with child notification support.
+
+| Field | Type | Notes |
+|---|---|---|
+| id | PK | Auto-increment |
+| household_id | FK | → households.id, NOT NULL, CASCADE on delete |
+| child_id | FK | → users.id, NOT NULL, CASCADE on delete |
+| parent_id | FK | → users.id, NOT NULL, RESTRICT on delete |
+| points | integer | NOT NULL. Positive = reward, negative = penalty |
+| reason | text | NOT NULL. Parent-provided explanation shown to the child |
+| seen | boolean | NOT NULL, default false. Child marks seen via unseen modal on login |
+| created_at | timestamp | Default now() |
+
+Notes:
+
+- Creates a corresponding `transactions` row with `source = 'manual_adjustment'` and `reference_id = point_adjustments.id`
+- `seen` flag drives the child login notification modal — unseen adjustments are shown immediately after login
+
+---
+
+### parent_tasks
+
+Parent-only to-do list. Not visible to children. Supports ordering, status tracking, and notes.
+
+| Field | Type | Notes |
+|---|---|---|
+| id | PK | Auto-increment |
+| household_id | FK | → households.id, NOT NULL, CASCADE on delete |
+| created_by | FK | → users.id, NOT NULL, RESTRICT on delete |
+| title | string | NOT NULL, max 255 |
+| status | string | NOT NULL, default 'active'. Values: active, in_progress, archived |
+| started_by | FK | → users.id, nullable, RESTRICT on delete |
+| sort_order | integer | NOT NULL, default 0. Used for drag-and-drop reordering |
+| archived_at | timestamp | Nullable. Set when task is archived |
+| created_at | timestamp | Default now() |
+| updated_at | timestamp | Default now() |
+
+---
+
+### parent_task_notes
+
+Notes attached to parent tasks. Similar to assignment_comments but for parent tasks.
+
+| Field | Type | Notes |
+|---|---|---|
+| id | PK | Auto-increment |
+| parent_task_id | FK | → parent_tasks.id, NOT NULL, CASCADE on delete |
+| created_by | FK | → users.id, NOT NULL, RESTRICT on delete |
+| content | text | NOT NULL |
+| created_at | timestamp | Default now() |
 
 ---
 
@@ -313,7 +390,7 @@ Points must never be duplicated, lost, over-contributed, or spent beyond a child
 ## API Structure
 
 ```
-backend/src/
+src/
   controllers/          — HTTP request/response only, no business logic
   services/             — business logic, DB queries, state machine enforcement
   middleware/
@@ -336,166 +413,7 @@ Controllers are thin: parse params/body, call service, return response with corr
 
 ## API Endpoints
 
-### Authentication
-
-| Method | Path | Auth | Notes |
-|---|---|---|---|
-| GET | /auth/profiles | No | Returns id, name, avatar, role only — never pin_hash |
-| POST | /auth/login | No | Accepts user id + PIN. Rate-limited per user. Returns `{ user, token }` |
-| POST | /auth/logout | Yes | Destroys session only. Does not affect JWT tokens |
-| POST | /auth/logout/mobile | Yes | Increments token_version, invalidating all JWTs for this user. Does not touch sessions |
-| GET | /auth/session | Yes | Returns current session info |
-
-Rate limiting: 3 failed attempts → 30-second lockout per profile (not global).
-
----
-
-### Users
-
-| Method | Path | Auth | Role | Notes |
-|---|---|---|---|---|
-| GET | /users | Yes | parent | List all household users |
-| POST | /users | Yes | parent | Create a new user in the household |
-| GET | /users/pin_changes | Yes | parent | Users who changed PIN in last 5 days |
-| PATCH | /users/me | Yes | any | Update own nick_name, avatar, or PIN |
-| GET | /users/:id | Yes | any | Get user details |
-| PATCH | /users/:id | Yes | parent | Update name, nick_name, avatar, role, or PIN |
-
----
-
-### Chores
-
-| Method | Path | Auth | Role | Notes |
-|---|---|---|---|---|
-| GET | /chores | Yes | any | List chore templates |
-| POST | /chores | Yes | parent | Create a new chore template |
-| PATCH | /chores/:id | Yes | parent | Update title, points, description, or emoji |
-
----
-
-### Schedules
-
-| Method | Path | Auth | Role | Notes |
-|---|---|---|---|---|
-| POST | /schedules | Yes | parent | Create a recurring schedule (+ first assignment). 409 if duplicate |
-| GET | /schedules | Yes | parent | List all schedules for the household |
-| GET | /schedules/chore/:chore_id | Yes | parent | List schedules for a specific chore |
-| PATCH | /schedules/:id | Yes | parent | Update frequency, day, or active status |
-| DELETE | /schedules/:id | Yes | parent | Remove a schedule. Existing assignments continue normally |
-
-**Scheduler:** Runs daily at 3:00am via `node-cron` inside Odin. For each active schedule, checks if today matches the frequency/day and if the most recent assignment for that (chore_id, child_id) pair is in a terminal state (approved, dismissed, canceled). If both conditions are met, creates a new assignment.
-
----
-
-### Assignments
-
-| Method | Path | Auth | Role | Notes |
-|---|---|---|---|---|
-| GET | /assignments | Yes | parent | List all assignments |
-| GET | /assignments/mine | Yes | child | Assignments for the logged-in child |
-| POST | /assignments | Yes | parent | Assign a chore (child_id optional — creates unassigned) |
-| PATCH | /assignments/pause-all-active | Yes | parent | Parent-pause all in_progress assignments |
-| GET | /assignments/available | Yes | child | List unassigned assignments available to claim |
-| PATCH | /assignments/:id/claim | Yes | child | Claim an unassigned assignment (race-safe with FOR UPDATE) |
-| PATCH | /assignments/:id/start | Yes | child | Start an assigned assignment |
-| PATCH | /assignments/:id/submit | Yes | child | Submit for review, optional comment |
-| PATCH | /assignments/:id/pause | Yes | child | Pause in_progress |
-| PATCH | /assignments/:id/resume | Yes | child | Resume paused or parent_paused |
-| PATCH | /assignments/:id/resume-rejected | Yes | child | Resume after rejection (preserves started_at) |
-| PATCH | /assignments/:id/approve | Yes | parent | Approve, award points via transaction |
-| PATCH | /assignments/:id/reject | Yes | parent | Reject submitted, requires comment |
-| PATCH | /assignments/:id/dismiss | Yes | parent | Dismiss without awarding points |
-| PATCH | /assignments/:id/cancel | Yes | parent | Cancel an unassigned, assigned, or rejected assignment |
-| PATCH | /assignments/:id/reassign | Yes | parent | Reassign to a different child |
-| PATCH | /assignments/:id/parent-pause | Yes | parent | Parent-pause a single in_progress assignment |
-| PATCH | /assignments/:id/assign | Yes | parent | Assign an unassigned task to a child |
-| PATCH | /assignments/:id/unassign | Yes | parent | Return an assigned/rejected/paused task to the unassigned pool |
-| GET | /assignments/:id/comments | Yes | any | Get comments for an assignment |
-| POST | /assignments/:id/comments | Yes | any | Add a comment to an assignment |
-
----
-
-### Rewards
-
-| Method | Path | Auth | Role | Notes |
-|---|---|---|---|---|
-| GET | /rewards | Yes | any | List all rewards |
-| GET | /rewards/:id | Yes | any | Get reward details |
-| POST | /rewards | Yes | any | Create reward request (starts as pending) |
-| PATCH | /rewards/:id | Yes | parent | Update reward details |
-| PATCH | /rewards/:id/approve | Yes | parent | Approve pending reward, set points_required |
-| PATCH | /rewards/:id/reject | Yes | parent | Reject pending reward (→ archived) |
-| PATCH | /rewards/:id/cancel | Yes | parent | Cancel active reward, auto-refund |
-| PATCH | /rewards/:id/archive | Yes | parent | Archive redeemed reward |
-| POST | /rewards/:id/contribute | Yes | child | Contribute points (clamped) |
-| GET | /rewards/:id/progress | Yes | any | Contribution breakdown |
-| POST | /rewards/:id/redeem | Yes | parent | Mark funded reward as redeemed |
-| PATCH | /rewards/:id/request-refund | Yes | child | Flag all own contributions for refund |
-| PATCH | /rewards/:id/approve-refund/:childId | Yes | parent | Approve refund, return points |
-| PATCH | /rewards/:id/reject-refund/:childId | Yes | parent | Reject refund request, reset flags |
-
----
-
-### Transactions
-
-| Method | Path | Auth | Role | Notes |
-|---|---|---|---|---|
-| GET | /transactions/ | Yes | parent | All household transactions, paginated |
-| GET | /transactions/mine | Yes | child | Logged-in child's transactions, paginated |
-| GET | /transactions/:id | Yes | parent | All transactions for a specific child, paginated |
-
-Query params (all optional): `page`, `limit`, `source`
-Valid source values: `chore_approved`, `reward_contribution`, `reward_refund`
-
-Response shape:
-```json
-{
-  "data": [...],
-  "pagination": { "total": 42, "page": 1, "limit": 20, "totalPages": 3 }
-}
-```
-
-Refund state not visible through the transaction layer:
-- Pending refund: `reward_contributions.refund_requested = true`
-- Approved refund: `transactions` row with `source = 'reward_refund'`
-- Rejected refund: `refund_requested` reset to `false`, no transaction row
-
----
-
-### Dashboard
-
-| Method | Path | Auth | Role | Notes |
-|---|---|---|---|---|
-| GET | /dashboard/child | Yes | child | Chores, balance, reward progress (session-based) |
-| GET | /dashboard/parent | Yes | parent | Pending approvals, children summaries |
-
-Aggregated endpoints to reduce frontend round-trips. One call returns everything needed to render a dashboard screen.
-
----
-
-### Setup
-
-| Method | Path | Auth | Notes |
-|---|---|---|---|
-| GET | /setup | No | Returns `{ complete: true/false }` based on whether a parent user exists |
-| POST | /setup | No | First-time setup: creates household + first parent user. Validated via Zod. Returns 403 if setup already complete |
-
-POST body:
-
-```json
-{
-  "household": { "name": "Family Name" },
-  "user": { "name": "Parent Name", "nick_name": "Nick", "avatar": { "style": "pixel-art", "seed": "Homer" }, "pin": "1234" }
-}
-```
-
----
-
-### System
-
-| Method | Path | Auth | Notes |
-|---|---|---|---|
-| GET | /health | No | Health check — returns `{status, db}`. 503 if DB unreachable |
+Full endpoint reference: see [`api-endpoints.md`](api-endpoints.md).
 
 ---
 
@@ -505,7 +423,7 @@ POST body:
 
 **Sessions:** `express-session` with `connect-pg-simple` PostgreSQL session store. Sessions persisted to the `session` table — survive restarts. `maxAge` set to 30 days. `household_id` and `id` always sourced from `req.session.user`, never from request body or params.
 
-**JWT (mobile):** `jsonwebtoken` (HS256). Login returns a 30-day signed token containing `{ id, household_id, role, name, nick_name, avatar, status, token_version }`. The `auth` middleware accepts either a valid session or a `Authorization: Bearer <token>` header — on valid JWT it populates `req.session.user` from the payload so all downstream middleware and controllers are unchanged. On JWT auth, the middleware does a single DB lookup to verify `token_version` matches the current value in `users` — mismatches return 401. `token_version` is incremented on PIN change or intentional mobile logout (`POST /auth/logout/mobile`), immediately invalidating all outstanding tokens for that user. Thor logout never touches `token_version`, so mobile sessions survive kiosk logouts and timeouts.
+**JWT (mobile):** `jsonwebtoken` (HS256). Access tokens (15m) + refresh tokens (30d, rotation on use, stored hashed in `refresh_tokens` table). Login via `POST /auth/token` returns `{ accessToken, refreshToken }`. The `auth` middleware accepts either a valid session or an `Authorization: Bearer <token>` header — on valid JWT it populates `req.session.user` from the payload so all downstream middleware and controllers are unchanged. On JWT auth, the middleware does a single DB lookup to verify `token_version` matches the current value in `users` — mismatches return 401. `token_version` is incremented on PIN change or explicit token revocation (`POST /auth/token/revoke`), immediately invalidating all outstanding tokens for that user. Thor logout never touches `token_version`, so mobile sessions survive kiosk logouts and timeouts.
 
 **Rate limiting:** Per-user lockout — 3 failed login attempts → 30-second cooldown per profile. Not global (one child's mistakes don't lock out parents). Implemented via `express-rate-limit` keyed on `user_id`, with `skipSuccessfulRequests: true`.
 
@@ -554,9 +472,9 @@ Explicit state machine enforced in `assignmentService.js`. Prevents invalid tran
 
 JWT added as a parallel auth method for Valkyrie (mobile). Sessions/cookies are unreliable in React Native; JWT in SecureStore is the standard mobile pattern. Sessions remain the auth mechanism for Thor — no migration needed.
 
-Single long-lived token (30 days, HS256) rather than access + refresh token pair. The app is household-internal; short-lived tokens add complexity with no meaningful security benefit at this scale.
+Access tokens (15m, HS256) + refresh tokens (30d, rotation on use). Refresh tokens stored as bcrypt hashes in the `refresh_tokens` table — old token is revoked on each refresh and a new pair is issued. Short-lived access tokens limit the window if a token is compromised; refresh rotation ensures stolen refresh tokens are single-use.
 
-Token revocation via `token_version` column on `users` rather than a token blacklist. Blacklists require storage and lookups that grow unbounded; version checking is a single indexed primary-key lookup per request. Version is incremented on PIN change or intentional mobile logout — both represent a deliberate "sign out everywhere" intent.
+Token revocation via `token_version` column on `users` rather than a token blacklist. Blacklists require storage and lookups that grow unbounded; version checking is a single indexed primary-key lookup per request. Version is incremented on PIN change or explicit revocation (`POST /auth/token/revoke`) — both represent a deliberate "sign out everywhere" intent.
 
 Thor logout deliberately does not increment `token_version`. Thor auto-logs out on inactivity; invalidating mobile tokens on every kiosk timeout would be a poor UX. The two clients have independent session lifecycles.
 
@@ -568,7 +486,17 @@ Thor logout deliberately does not increment `token_version`. Thor auto-logs out 
 
 ## Future Enhancements (Backend)
 
-- **Manual point adjustments** — parent endpoint to add/subtract points directly with a `manual_adjustment` transaction
+- **Edit reward info** — `PATCH /rewards/:id`, parent-only. Editable fields: title, description, points_required. No status restrictions — parent can edit at any time regardless of funding state. The parent has decision power, not the app.
+- **Refund All (without canceling)** — new action on rewards endpoint. Returns all contributed points to children via transactions but keeps the reward in active status. Contributions can restart from zero.
+- **Set to Funded** — new action on rewards endpoint. Parent manually marks reward as funded. Does NOT refund children's contributed points — they keep their points spent. Moves reward to funded status ready for redemption.
+- **Parent-only reward notes** — new `reward_notes` field or related table. Parent-only visibility. Stores links, purchase notes, price tracking. Future: kiosk link viewer (deferred).
+- **Notifications table + login badge** — new `notifications` table (id, user_id, household_id, type, reference_id, seen, created_at). No FK constraints — reference columns only for clean joins and easy pruning. Events that write a notification row: chore approved, chore rejected, reward approved/funded/canceled, one-time assignment given, points awarded/penalized (existing `point_adjustments.seen` remains separate — standalone modal). Login badge endpoint: `SELECT EXISTS(...)` for unseen notifications per user. Scheduler prunes seen rows daily.
+- **In-app bug reports** — new `bug_reports` table (id, reporter_name varchar, reporter_role varchar, description text, status varchar default 'open', created_at). No FK constraints — fully standalone. Endpoints: `POST /bugs` (any authenticated user), `GET /bugs` (parent-only, for developer review), `PATCH /bugs/:id` (parent-only, update status to 'open'/'fixed').
+- **Missed assignments query expansion** — update `getMissedAssignments` to include overdue chores not yet auto-dismissed: add `assigned + assigned_at < today + started_at IS NULL` alongside existing `dismissed + started_at IS NULL`. Closes the one-day visibility gap where parents can't see missed chores until the scheduler auto-dismisses them. Frontend-only impact — parent History Missed Chores column shows missed chores a day earlier. No schema changes.
+- **Child dashboard stats** — new query or endpoint for 7-day performance stats: completed count, missed count, points earned, points missed. Data exists in assignments + transactions tables — needs time-bucketed aggregation.
+- **Pool chore recurrence + inline status** — scheduler support for recurring pool assignments. Dedup rule: if any unassigned instance of that chore exists in the pool, skip scheduling (no stacking). Once claimed, assignment attaches to the child and tracking begins. One-time pool assignments persist until claimed or parent clears them. Schema details deferred to implementation after reviewing current pool mechanics — likely a small addition to `chore_schedules`. Pool + child recurrence can coexist on the same chore.
+- **Child-focused overlay stats** — per-child 7-day stats (completed/missed counts, points earned/missed, streak). Reuses the same aggregation as child dashboard stats but filtered to a single child. May extend the existing child dashboard stats endpoint with a `child_id` param or be a separate query.
+- **Child recall refund request** — `PATCH /rewards/:id/cancel-refund`, child-only. Returns reward from refund-pending back to its prior state. Reverses the refund request without parent involvement.
 - **Push notifications** — webhook or SSE endpoint for real-time chore approval/rejection alerts
 - **Child leaderboard endpoint** — new aggregation endpoint (e.g., `GET /dashboard/leaderboard`) that queries the `transactions` table to return points earned per child for today, yesterday, this week, and this month. Data already exists — no new tables needed, just time-bucketed aggregation queries
 - **Gamification — badges & achievements** — new schema (`badges`, `child_badges`), logic to check/award badges on chore completion (e.g., first chore, 10th chore, 7-day streak). Parked until leaderboard ships and engagement is evaluated. Start with simple count-based badges before tackling streaks or time-based achievements

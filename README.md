@@ -26,7 +26,7 @@ The backend API for Chore Tracker. Built with Node.js, Express, Knex, and Postgr
 
 Create a `.env` file in the root of this directory:
 
-```
+```env
 NODE_ENV=development
 PORT=8080
 DB_HOST=localhost
@@ -36,6 +36,9 @@ DB_USER=your_db_user
 DB_PASSWORD=your_db_password
 SESSION_SECRET=a_long_random_string
 CLIENT_URL=http://localhost:3333  # CORS origin — set to your frontend's URL
+JWT_SECRET=a_long_random_string   # Required for mobile (JWT) auth
+JWT_ACCESS_EXPIRY=15m             # Optional, defaults to 15m
+JWT_REFRESH_EXPIRY=30d            # Optional, defaults to 30d
 ```
 
 ---
@@ -84,7 +87,7 @@ npx knex seed:run
 
 ## Project Structure
 
-```
+```text
 src/
   controllers/    — HTTP request/response handling
   services/       — business logic and database queries
@@ -107,7 +110,7 @@ knexfile.js       — Knex configuration
 ## API Overview
 
 | Resource | Base Path |
-|---|---|
+| --- | --- |
 | Auth | `/auth` |
 | Users | `/users` |
 | Chores | `/chores` |
@@ -116,10 +119,12 @@ knexfile.js       — Knex configuration
 | Transactions | `/transactions` |
 | Dashboard | `/dashboard` |
 | Schedules | `/schedules` |
+| Parent Tasks | `/parent-tasks` |
+| Adjustments | `/adjustments` |
 | Setup | `/setup` |
 | Health | `/health` |
 
-Full endpoint reference: see [`reference_docs/odin-reference.md`](reference_docs/odin-reference.md).
+Full endpoint reference: see [`reference_docs/api-endpoints.md`](reference_docs/api-endpoints.md).
 
 ---
 

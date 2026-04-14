@@ -37,15 +37,20 @@ DB_USER=your_db_user
 DB_PASSWORD=your_db_password
 SESSION_SECRET=your_generated_secret_here
 CLIENT_URL=http://your-frontend-url
+JWT_SECRET=your_generated_jwt_secret_here
+JWT_ACCESS_EXPIRY=15m
+JWT_REFRESH_EXPIRY=30d
 ```
 
-Generate a session secret:
+Generate secrets:
 
 ```bash
-openssl rand -base64 48
+openssl rand -base64 48  # Use once for SESSION_SECRET, once for JWT_SECRET
 ```
 
 `CLIENT_URL` is the origin of your frontend application — used for CORS. Set this to whatever URL your frontend is served from.
+
+`JWT_SECRET` is required for mobile (JWT) auth. `JWT_ACCESS_EXPIRY` and `JWT_REFRESH_EXPIRY` are optional — defaults shown above.
 
 ---
 
@@ -194,8 +199,9 @@ Once TLS is configured on your reverse proxy:
 
 ## Notes
 
-- Odin uses cookie-based sessions stored in PostgreSQL (`connect-pg-simple`). Sessions expire after 30 days.
+- Odin supports two auth methods: cookie-based sessions (kiosk/web) stored in PostgreSQL (`connect-pg-simple`, 30-day expiry), and JWT auth (mobile) with access tokens (15m) + refresh tokens (30d, rotation on use).
 - CORS is configured to allow requests from `CLIENT_URL` only.
 - `sameSite` is set to `lax` — appropriate for same-site or subdomain deployments. If your frontend and API are on different domains, you may need to change this to `none` (requires `secure: true`).
 - Rate limiting is enabled on the login endpoint (3 attempts per user, 30-second cooldown).
-- See [`odin-reference.md`](odin-reference.md) for the full API reference, database schema, and business logic documentation.
+- See [`odin-reference.md`](odin-reference.md) for database schema, business logic, and architecture documentation.
+- See [`api-endpoints.md`](api-endpoints.md) for the full API endpoint reference.
