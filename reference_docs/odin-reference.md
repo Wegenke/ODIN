@@ -173,6 +173,7 @@ submitted       → approved       (parent — approve; awards points via transa
 submitted       → rejected       (parent — reject, required comment)
 rejected        → in_progress    (child — resume-rejected; preserves started_at and pause data)
 rejected        → dismissed      (parent — dismiss)
+(none)          → in_progress    (child — start-ahead; creates a new row directly in_progress for a non-daily scheduled chore not yet generated this period)
 ```
 
 Any invalid transition returns 400. The service checks both current status and requesting user's role before applying any transition.
@@ -448,6 +449,10 @@ Full endpoint reference: see [`api-endpoints.md`](api-endpoints.md).
 
 ## Architecture Decisions
 
+### ADR-001: Monorepo Strategy
+
+Single Git repository with subdirectories per service (`ODIN/`, `THOR/`, `VALKYRIE/`) rather than separate repos. Solo developer — no team coordination benefit to splitting. One clone gets the entire stack. Deployment repos (`odin`, `thor`, `valkyrie`) are synced from this monorepo as a separate step. Path-based CI triggers can scope per-service work if needed.
+
 ### ADR-002: PIN-Based Authentication
 
 PIN login over password/OAuth. Primary users are children on a touchscreen kiosk — PINs are fast, low friction, and appropriate for a household-only app. Mitigated by bcrypt hashing and per-user rate limiting.
@@ -486,10 +491,10 @@ Thor logout deliberately does not increment `token_version`. Thor auto-logs out 
 
 ## Future Enhancements (Backend)
 
-- **Edit reward info** — `PATCH /rewards/:id`, parent-only. Editable fields: title, description, points_required. No status restrictions — parent can edit at any time regardless of funding state. The parent has decision power, not the app.
+- **Edit reward info** — `PATCH /rewards/:id`, parent-only. Editable fields: title, description, points_required. No status restrictions — parent can edit at any time regardless of funding state. The parent has decision power, not the app. **TBD:** behavior when `points_required` is lowered below the current contributed total — likely auto-flip reward to `funded` status, but confirm with frontend whether to warn the parent on save.
 - **Refund All (without canceling)** — new action on rewards endpoint. Returns all contributed points to children via transactions but keeps the reward in active status. Contributions can restart from zero.
 - **Set to Funded** — new action on rewards endpoint. Parent manually marks reward as funded. Does NOT refund children's contributed points — they keep their points spent. Moves reward to funded status ready for redemption.
-- **Parent-only reward notes** — new `reward_notes` field or related table. Parent-only visibility. Stores links, purchase notes, price tracking. Future: kiosk link viewer (deferred).
+- **Parent-only reward notes** — new `reward_notes` field or related table. Parent-only visibility. Stores links, purchase notes, price tracking. Future: kiosk link viewer (deferred). **TBD:** single text field vs. structured `reward_notes` table — table allows multi-entry/timestamped notes; field is simpler if parent only needs one running note. Decision drives the frontend UX shape.
 - **Notifications table + login badge** — new `notifications` table (id, user_id, household_id, type, reference_id, seen, created_at). No FK constraints — reference columns only for clean joins and easy pruning. Events that write a notification row: chore approved, chore rejected, reward approved/funded/canceled, one-time assignment given, points awarded/penalized (existing `point_adjustments.seen` remains separate — standalone modal). Login badge endpoint: `SELECT EXISTS(...)` for unseen notifications per user. Scheduler prunes seen rows daily.
 - **In-app bug reports** — new `bug_reports` table (id, reporter_name varchar, reporter_role varchar, description text, status varchar default 'open', created_at). No FK constraints — fully standalone. Endpoints: `POST /bugs` (any authenticated user), `GET /bugs` (parent-only, for developer review), `PATCH /bugs/:id` (parent-only, update status to 'open'/'fixed').
 - **Missed assignments query expansion** — update `getMissedAssignments` to include overdue chores not yet auto-dismissed: add `assigned + assigned_at < today + started_at IS NULL` alongside existing `dismissed + started_at IS NULL`. Closes the one-day visibility gap where parents can't see missed chores until the scheduler auto-dismisses them. Frontend-only impact — parent History Missed Chores column shows missed chores a day earlier. No schema changes.

@@ -308,4 +308,16 @@ const getMissedAssignments = async (req, res) => {
   }
 }
 
-module.exports = {getAssignments, getMyAssignments, createAssignment, submitAssignment, approveAssignment, rejectAssignment, addComment, getComments, dismissAssignment, startAssignment, pauseAssignment, resumeAssignment, resumeRejectedAssignment, cancelAssignment, reassignAssignment, parentStartAssignment, unstartAssignment, parentPauseAssignment, pauseAllActive, claimAssignment, getAvailableAssignments, assignAssignment, unassignAssignment, getMissedAssignments}
+const startAhead = async (req, res) => {
+  try {
+    const { id: child_id, household_id } = req.user
+    const { chore_id } = req.body
+    const assignment = await assignmentService.startAhead(chore_id, child_id, household_id)
+    return res.status(201).json(assignment)
+  } catch (err) {
+    if (err.status) return res.status(err.status).json({ message: err.message })
+    return res.status(500).json({ message: 'Server error' })
+  }
+}
+
+module.exports = {getAssignments, getMyAssignments, createAssignment, submitAssignment, approveAssignment, rejectAssignment, addComment, getComments, dismissAssignment, startAssignment, pauseAssignment, resumeAssignment, resumeRejectedAssignment, cancelAssignment, reassignAssignment, parentStartAssignment, unstartAssignment, parentPauseAssignment, pauseAllActive, claimAssignment, getAvailableAssignments, assignAssignment, unassignAssignment, getMissedAssignments, startAhead}

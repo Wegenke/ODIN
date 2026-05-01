@@ -753,4 +753,53 @@ const getMissedAssignments = async (household_id, { page = 1, limit = 10, child_
   }
 }
 
-module.exports = {getAssignments, getMyAssignments, createAssignment, submitAssignment, approveAssignment, rejectAssignment, addComment, getComments, dismissAssignment, startAssignment, pauseAssignment, resumeAssignment, resumeRejectedAssignment, cancelAssignment, reassignAssignment, parentStartAssignment, unstartAssignment, parentPauseAssignment, pauseAllActive, claimAssignment, getAvailableAssignments, assignAssignment, unassignAssignment, getMissedAssignments}
+const startAhead = async (chore_id, child_id, household_id) => {
+  return await knex.transaction(async (trx) => {
+    const schedule = await trx('chore_schedules')
+      .join('chores', 'chore_schedules.chore_id', 'chores.id')
+      .where({
+        'chore_schedules.chore_id': chore_id,
+        'chore_schedules.child_id': child_id,
+        'chore_schedules.active': true,
+        'chores.household_id': household_id
+      })
+      .select('chore_schedules.*')
+      .forUpdate()
+      .first()
+
+    if (!schedule) throw Object.assign(new Error('Schedule not found for this chore'), { status: 404 })
+    if (schedule.frequency === 'daily') throw Object.assign(new Error('Daily chores cannot be started ahead'), { status: 400 })
+
+    const now = new Date()
+    let periodStart
+    if (schedule.frequency === 'weekly') {
+      periodStart = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+      periodStart.setDate(periodStart.getDate() - periodStart.getDay())
+    } else if (schedule.frequency === 'monthly') {
+      periodStart = new Date(now.getFullYear(), now.getMonth(), 1)
+    } else {
+      throw Object.assign(new Error('Unsupported schedule frequency'), { status: 400 })
+    }
+
+    const existing = await trx('chore_assignments')
+      .where({ chore_id, child_id })
+      .where('assigned_at', '>=', periodStart)
+      .first()
+
+    if (existing) throw Object.assign(new Error('An assignment already exists for this period'), { status: 409 })
+
+    const [created] = await trx('chore_assignments')
+      .insert({
+        chore_id,
+        child_id,
+        status: 'in_progress',
+        assigned_at: trx.fn.now(),
+        started_at: trx.fn.now()
+      })
+      .returning('*')
+
+    return created
+  })
+}
+
+module.exports = {getAssignments, getMyAssignments, createAssignment, submitAssignment, approveAssignment, rejectAssignment, addComment, getComments, dismissAssignment, startAssignment, pauseAssignment, resumeAssignment, resumeRejectedAssignment, cancelAssignment, reassignAssignment, parentStartAssignment, unstartAssignment, parentPauseAssignment, pauseAllActive, claimAssignment, getAvailableAssignments, assignAssignment, unassignAssignment, getMissedAssignments, startAhead}

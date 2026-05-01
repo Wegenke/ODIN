@@ -77,6 +77,7 @@ Rate limiting: 3 failed attempts → 30-second lockout per profile (not global).
 | GET | /assignments/available | Yes | child | List unassigned assignments available to claim |
 | GET | /assignments/missed | Yes | parent | Missed chores (dismissed + never started), paginated. Query: `page`, `limit`, `child_id` |
 | POST | /assignments | Yes | parent | Assign a chore (child_id optional — creates unassigned) |
+| POST | /assignments/start-ahead | Yes | child | Start a future-scheduled chore early. Body: `{chore_id}`. Creates an `in_progress` row immediately. Rejects if a daily schedule, or if an assignment already exists for the current period (week/month). |
 | PATCH | /assignments/pause-all-active | Yes | parent | Parent-pause all in_progress assignments household-wide |
 | PATCH | /assignments/:id/start | Yes | child | Start an assigned chore |
 | PATCH | /assignments/:id/submit | Yes | child | Submit for review, optional comment |
@@ -150,7 +151,7 @@ Response shape:
 |---|---|---|---|---|
 | GET | /dashboard/parent | Yes | parent | Pending approvals, children summaries |
 | GET | /dashboard/child | Yes | child | Active chores, balance, reward progress |
-| GET | /dashboard/child/summary | Yes | child | Missed chores, recently completed, reward info |
+| GET | /dashboard/child/summary | Yes | child | `{missed, today, thisWeek, thisMonth, recentlyCompleted (cap 4), chorePoolOldest (cap 3), closestMine, closestShared}`. `thisWeek`/`thisMonth` are upcoming schedule previews — filtered to days not yet passed AND no assignment generated this period |
 | GET | /dashboard/child/:child_id | Yes | parent | View a child's dashboard as the parent (read-only) |
 
 Aggregated endpoints — one call returns everything needed to render a dashboard screen.

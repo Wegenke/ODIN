@@ -22,4 +22,8 @@ const reassignAssignmentSchema = z.object({
   comment: z.string().max(500).optional()
 })
 
-module.exports = {createAssignmentSchema, rejectAssignmentSchema, addCommentSchema, reassignAssignmentSchema, optionalCommentSchema}
+const startAheadSchema = z.object({
+  chore_id: z.number().int().positive()
+})
+
+module.exports = {createAssignmentSchema, rejectAssignmentSchema, addCommentSchema, reassignAssignmentSchema, optionalCommentSchema, startAheadSchema}
