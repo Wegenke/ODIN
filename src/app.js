@@ -47,12 +47,13 @@ app.use(session({
   }),
   secret: process.env.SESSION_SECRET,
   resave: false,
+  rolling: true,
   saveUninitialized: false,
   cookie: {
     secure: false, //Set to true for Caddy migration
     httpOnly: true,
     sameSite: 'lax',
-    maxAge: 30*24*60*60*1000,
+    maxAge: 5*60*1000,
   }
 }))
 

@@ -199,7 +199,7 @@ Once TLS is configured on your reverse proxy:
 
 ## Notes
 
-- Odin supports two auth methods: cookie-based sessions (kiosk/web) stored in PostgreSQL (`connect-pg-simple`, 30-day expiry), and JWT auth (mobile) with access tokens (15m) + refresh tokens (30d, rotation on use).
+- Odin supports two auth methods: cookie-based sessions (kiosk/web) stored in PostgreSQL (`connect-pg-simple`, 5-minute rolling expiry — extended on each request, expires after 5 minutes of inactivity), and JWT auth (mobile) with access tokens (15m) + refresh tokens (30d, rotation on use).
 - CORS is configured to allow requests from `CLIENT_URL` only.
 - `sameSite` is set to `lax` — appropriate for same-site or subdomain deployments. If your frontend and API are on different domains, you may need to change this to `none` (requires `secure: true`).
 - Rate limiting is enabled on the login endpoint (3 attempts per user, 30-second cooldown).
