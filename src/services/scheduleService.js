@@ -26,17 +26,25 @@ const createSchedule = async (data, household_id) => {
     })
     .returning('*')
 
-  const activeAssignment = await knex('chore_assignments')
-    .where({ chore_id: data.chore_id, child_id: data.child_id })
-    .whereNotIn('status', TERMINAL_STATES)
-    .first()
+  const now = new Date()
+  const firesToday =
+    data.frequency === 'daily' ||
+    (data.frequency === 'weekly'  && data.day_of_week  === now.getDay()) ||
+    (data.frequency === 'monthly' && data.day_of_month === now.getDate())
 
   let assignment = null
-  if (!activeAssignment) {
-    const [created] = await knex('chore_assignments')
-      .insert({ chore_id: data.chore_id, child_id: data.child_id, status: 'assigned' })
-      .returning('*')
-    assignment = created
+  if (firesToday) {
+    const activeAssignment = await knex('chore_assignments')
+      .where({ chore_id: data.chore_id, child_id: data.child_id })
+      .whereNotIn('status', TERMINAL_STATES)
+      .first()
+
+    if (!activeAssignment) {
+      const [created] = await knex('chore_assignments')
+        .insert({ chore_id: data.chore_id, child_id: data.child_id, status: 'assigned' })
+        .returning('*')
+      assignment = created
+    }
   }
 
   return { schedule, assignment }

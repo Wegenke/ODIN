@@ -1,6 +1,5 @@
 const cron = require('node-cron')
 const knex = require('./db')
-const { TERMINAL_STATES } = require('./services/scheduleService')
 
 const dismissMissedAssignments = async () => {
   const yesterday = new Date()
@@ -38,31 +37,33 @@ const runScheduler = async () => {
   const dayOfWeek = now.getDay()
   const dayOfMonth = now.getDate()
 
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  const startOfWeek = new Date(startOfToday)
+  startOfWeek.setDate(startOfWeek.getDate() - dayOfWeek)
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
+
   const schedules = await knex('chore_schedules').where({ active: true })
 
   for (const schedule of schedules) {
-    if (schedule.frequency === 'weekly' && schedule.day_of_week !== dayOfWeek) continue
-    if (schedule.frequency === 'monthly' && schedule.day_of_month !== dayOfMonth) continue
+    let periodStart
+    if (schedule.frequency === 'daily') {
+      periodStart = startOfToday
+    } else if (schedule.frequency === 'weekly') {
+      if (schedule.day_of_week !== dayOfWeek) continue
+      periodStart = startOfWeek
+    } else if (schedule.frequency === 'monthly') {
+      if (schedule.day_of_month !== dayOfMonth) continue
+      periodStart = startOfMonth
+    } else {
+      continue
+    }
 
-    const latest = await knex('chore_assignments')
+    const existing = await knex('chore_assignments')
       .where({ chore_id: schedule.chore_id, child_id: schedule.child_id })
-      .orderBy('assigned_at', 'desc')
+      .where('assigned_at', '>=', periodStart)
       .first()
 
-    if (latest && !TERMINAL_STATES.includes(latest.status)) {
-      // Submitted chores never block — child did their part
-      if (latest.status === 'submitted') { /* allow creation */ }
-      // Rejected chores always block — child must redo or parent must dismiss
-      else if (latest.status === 'rejected') continue
-      // Other non-terminal statuses block only if from today
-      else {
-        const today = new Date()
-        today.setHours(0, 0, 0, 0)
-        const assignedDate = new Date(latest.assigned_at)
-        assignedDate.setHours(0, 0, 0, 0)
-        if (assignedDate.getTime() === today.getTime()) continue
-      }
-    }
+    if (existing) continue
 
     await knex('chore_assignments')
       .insert({ chore_id: schedule.chore_id, child_id: schedule.child_id, status: 'assigned' })
