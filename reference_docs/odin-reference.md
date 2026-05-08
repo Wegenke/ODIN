@@ -93,6 +93,7 @@ Defines chore templates.
 | description | text | Nullable |
 | emoji | string | NOT NULL. Emoji icon for the chore e.g. `"🍽️"`. Defaults to `"🦺"` if omitted |
 | points | integer | Awarded on approval |
+| team_chore | boolean | NOT NULL, default false. When true, claiming a pool entry of this chore creates a NEW assignment row instead of consuming the pool entry — multiple kids can claim and earn from the same pool entry (see Pool & Team Chores business logic) |
 | created_by | FK | → users.id |
 | created_at | timestamp | Default now() |
 
@@ -100,7 +101,7 @@ Defines chore templates.
 
 ### chore_schedules
 
-Defines recurring assignment rules. One row per chore per child. The daily scheduler checks this table and generates new assignments when the previous one reaches a terminal state.
+Defines recurring assignment rules. One row per chore per child, OR one row per chore for pool (child_id NULL). The daily scheduler checks this table and generates new assignments when the previous one reaches a terminal state.
 
 Household scoping via JOIN to `chores` on `chore_schedules.chore_id = chores.id`.
 
@@ -108,7 +109,7 @@ Household scoping via JOIN to `chores` on `chore_schedules.chore_id = chores.id`
 |---|---|---|
 | id | PK | Auto-increment |
 | chore_id | FK | → chores.id, NOT NULL, CASCADE on delete |
-| child_id | FK | → users.id, NOT NULL, RESTRICT on delete |
+| child_id | FK | → users.id. **Nullable** — NULL = pool schedule (anyone can claim) |
 | frequency | string | NOT NULL. 'daily', 'weekly', or 'monthly' |
 | day_of_week | integer | 0=Sun, 1=Mon, ..., 6=Sat. Required for weekly, null otherwise |
 | day_of_month | integer | 1-28. Required for monthly, null otherwise |
@@ -116,12 +117,14 @@ Household scoping via JOIN to `chores` on `chore_schedules.chore_id = chores.id`
 | last_generated_at | timestamp | When the scheduler last created an assignment |
 | created_at | timestamp | Default now() |
 
-**Unique constraint:** `(chore_id, child_id)` — prevents duplicate schedules for the same chore and child.
+**Unique constraint:** `(chore_id, child_id, frequency, day_of_week, day_of_month)` — prevents exact duplicates. Postgres treats NULL as distinct in unique constraints, so app-level dedup in `scheduleService.createSchedule` is the real enforcement (and works correctly with `child_id IS NULL` via Knex). Pool + child-targeted schedules can coexist on the same chore (e.g., weekly child-assigned for "clean room" plus monthly pool team-chore for "deep clean together").
 
-**Scheduler:** Runs daily at 3:00am via `node-cron` (`src/scheduler.js`). Two-phase process:
+**Scheduler:** Runs daily at 3:00am via `node-cron` (`src/scheduler.js`). Phases (in order):
 
-1. **Auto-dismiss:** Finds all `assigned` chores where `assigned_at < yesterday midnight` and sets them to `dismissed` with a system comment (`"Missed — not completed"`).
-2. **Generate assignments:** For each active schedule, checks if today matches the frequency/day and if the most recent assignment for that (chore_id, child_id) pair is in a terminal state (approved, dismissed, canceled). If both conditions are met, creates a new assignment. Includes a **catch-up mechanism** with a 7-day lookback cap: if `last_generated_at` is older than today, backfills missing days with `assigned_at` set to each missed date (not today). Gaps older than 7 days are accepted as lost. On a normal day with no gaps, behavior is identical to creating a single assignment for today.
+1. **Auto-dismiss missed (child-assigned):** Finds all `assigned` chores where `assigned_at < yesterday midnight` and sets them to `dismissed` with a system comment (`"Missed — not completed"`).
+2. **Expire pool entries:** Sets `unassigned` pool assignments where `expires_at IS NOT NULL AND expires_at < now()` to `dismissed` with `completed_at = now()`. One-off pool entries (`expires_at IS NULL`) persist indefinitely.
+3. **Generate assignments:** For each active schedule, checks if today matches the frequency/day. For child schedules: dedupes against existing assignment for (chore_id, child_id) on-or-after period start; otherwise creates a new `assigned` row. For pool schedules (`child_id IS NULL`): dedupes against any existing non-expired `unassigned` pool entry for this chore_id; otherwise inserts an `unassigned` pool entry with `expires_at = end of current period`. Includes a **catch-up mechanism** with a 7-day lookback cap for child schedules: backfills missing days with historical `assigned_at`. Gaps older than 7 days are accepted as lost.
+4. **Prune notifications:** Deletes notifications where `seen_at < now() - 7 days`.
 
 **Deploy note:** When the catch-up mechanism is first deployed, update all `last_generated_at` values to the current date to prevent historical backfill.
 
@@ -148,6 +151,7 @@ Links chores to children with full status tracking.
 | reviewed_by | FK | → users.id. Nullable |
 | reviewed_at | timestamp | Nullable |
 | completed_at | timestamp | Nullable |
+| expires_at | timestamp | Nullable. Set on pool assignments created by the scheduler (= end of recurrence period). Daily scheduler dismisses unclaimed pool entries past `expires_at`. NULL on child-assigned and on one-off pool entries (`POST /assignments` without child_id) — those persist until claimed/cancelled. |
 
 **Status values:** `assigned`, `in_progress`, `paused`, `parent_paused`, `submitted`, `rejected`, `approved`, `dismissed`, `canceled`, `unassigned`
 
@@ -344,6 +348,66 @@ Notes attached to parent tasks. Similar to assignment_comments but for parent ta
 | content | text | NOT NULL |
 | created_at | timestamp | Default now() |
 
+### bug_reports
+
+In-app bug reports submitted by any household user; reviewed by parents.
+
+| Field | Type | Notes |
+|---|---|---|
+| id | PK | Auto-increment |
+| household_id | FK | → households.id, NOT NULL, CASCADE on delete |
+| user_id | FK | → users.id, NOT NULL, CASCADE on delete (submitter) |
+| body | text | NOT NULL, 1–2000 chars (trimmed) |
+| status | varchar | NOT NULL, default `'open'`. Allowed: `open`, `resolved`, `dismissed` |
+| created_at | timestamp | Default now() |
+| updated_at | timestamp | Default now(); set on status change |
+
+Indexed on `(household_id, status)` for the parent list query.
+
+### reward_notes
+
+Parent-only annotations attached to a reward — links, price tracking, where-to-buy notes. Multiple notes per reward, attributed by author. Children never see this table or its endpoints.
+
+| Field | Type | Notes |
+|---|---|---|
+| id | PK | Auto-increment |
+| reward_id | FK | → rewards.id, NOT NULL, CASCADE on delete |
+| created_by | FK | → users.id, NOT NULL, RESTRICT on delete (author) |
+| body | text | NOT NULL, 1–2000 chars (trimmed) |
+| created_at | timestamp | Default now() |
+| updated_at | timestamp | Default now(); set on body edit |
+
+Indexed on `reward_id` for the list query.
+
+**Authorization model:** any parent in the household can read/add/edit/delete any note (shared responsibility, not author-gated). Mirrors `parent_tasks`.
+
+### notifications
+
+Per-user event notifications for the login badge + notifications panel. Written by service-layer hooks on chore approval/rejection, one-time assignment creation, reward lifecycle, and bug status changes. Daily scheduler prunes seen rows older than 7 days. Adjustments still use the standalone `point_adjustments.seen` modal flow — they do **not** write notifications.
+
+| Field | Type | Notes |
+|---|---|---|
+| id | PK | Auto-increment |
+| household_id | FK | → households.id, NOT NULL, CASCADE on delete |
+| user_id | FK | → users.id, NOT NULL, CASCADE on delete — recipient |
+| type | varchar | NOT NULL. One of: `chore_approved`, `chore_rejected`, `assignment_given`, `reward_approved`, `reward_rejected`, `reward_funded`, `reward_cancelled`, `bug_status_changed` |
+| reference_id | int | Nullable, no FK — soft pointer to source row (assignment.id, reward.id, bug.id). Lets the source row be deleted without orphaning notifications |
+| seen_at | timestamp | Nullable. NULL = unseen. Set when user marks one or all seen |
+| created_at | timestamp | Default now() |
+
+Indexed on `(user_id, seen_at)` for hot read paths (own notifications, unseen count).
+
+**Recipient rules:**
+- `chore_approved`, `chore_rejected`, `assignment_given` → assignment.child_id
+- `reward_approved`, `reward_rejected` → reward.created_by (the requesting child)
+- `reward_funded` → all distinct contributors + reward.created_by if creator is a child (deduped via Set)
+- `reward_cancelled` → each refunded contributor
+- `bug_status_changed` → bug.user_id (the submitter)
+
+**No-op cases:**
+- Bug status update where new status equals old status — no notification written.
+- `setRewardFunded` on a parent-created reward with zero contributions — empty recipient set, no notifications.
+
 ---
 
 ## Business Logic
@@ -371,10 +435,22 @@ Points must never be duplicated, lost, over-contributed, or spent beyond a child
 ### Refund Logic
 
 - Child flags all their contributions on a reward: `refund_requested = true`
+- Child can recall their own pending refund request via `PATCH /rewards/:id/cancel-refund` (flips `refund_requested` back to false; no parent involvement)
 - Parent approves: all flagged contribution rows deleted, points returned, single `reward_refund` transaction inserted
 - If refund drops a `funded` reward below `points_required`, reward reverts to `active`
 - Parent rejects: `refund_requested` reset to `false`, no transaction inserted
-- When parent cancels a reward (`active → archived`): all contributions from all children auto-refunded without child request
+- When parent cancels a reward (`active → archived`): all contributions from all children auto-refunded — one `reward_refund` transaction per child (summed), all contribution rows deleted
+- **Refund All (without canceling)** (`PATCH /rewards/:id/refund-all`): on `active` or `funded` rewards, refunds every contribution (one transaction per child, summed), deletes all contribution rows, returns reward to `active` status. Reward stays in the system for renewed contributions.
+- **Set to Funded** (`PATCH /rewards/:id/set-funded`): parent flips `active → funded` without requiring full contribution. Existing contributions stay debited (no refund) — kid effectively gets a discount funded by the parent.
+
+### Reward Edit Auto-Flip
+
+`PATCH /rewards/:id` allows partial updates with no status restrictions. When `points_required` is edited on an `active` or `funded` reward, status auto-flips based on current contributed total:
+
+- `contributed >= new points_required` → `funded`
+- `contributed < new points_required` → `active`
+- Other statuses (`pending`, `redeemed`, `archived`) are immune — the field is updated but status is left alone
+- Excess contributions (when `points_required` lowered below contributed total) are **not** auto-refunded; parent uses `refund-all` if cleanup is wanted
 
 ### Chore Approval Points Award
 
@@ -385,6 +461,44 @@ Points must never be duplicated, lost, over-contributed, or spent beyond a child
 5. Insert transaction (`amount = +points`, `source = 'chore_approved'`)
 6. Update `users.points_balance += points`
 7. Commit
+
+### Pool & Team Chores
+
+**Pool chores** are assignments with `child_id IS NULL` — anyone can claim. Two flavors:
+
+- **One-off pool entries** — created via `POST /assignments` with no child_id. `expires_at IS NULL`. Persist until claimed or cancelled by parent.
+- **Recurring pool entries** — created by the scheduler from a pool schedule (`chore_schedules.child_id IS NULL`). `expires_at` set to end of current period (daily/weekly/monthly). Auto-dismissed by scheduler if unclaimed past `expires_at`.
+
+**Pool generation dedup (scheduler):** A new pool entry is NOT created if a non-expired `unassigned` pool entry already exists for that chore. Prevents stacking.
+
+**Team chores** (`chores.team_chore = true`) modify *claim* behavior. A team-chore claim does NOT consume the pool entry — instead, it inserts a NEW `assigned` row for the claimant and leaves the pool entry untouched. Multiple kids can each claim the same pool entry, do the chore together, and submit/approve independently. Each child earns the chore's full points (the chore form should label "X pts each" when the flag is set).
+
+**Per-pool-entry duplicate prevention:** A child cannot claim the same team chore twice from the same pool entry. The check: does this child already have an active claim (`assigned`, `in_progress`, `paused`, `parent_paused`, `submitted`) on this chore_id with `assigned_at >= the pool entry's assigned_at`? If yes → 400 "Already claimed this team chore". Approved/rejected/dismissed don't block — that's history, child can claim a *new* pool entry next period.
+
+**Toggling `team_chore` mid-life:** No retroactive effect on existing claims. The flag affects future claim behavior only.
+
+**Pool + child-assigned coexistence:** Both schedule types can target the same chore. Child-targeted schedules generate child-assigned rows (existing behavior); pool schedules generate pool entries. They share nothing — independent dedup, independent lifecycles.
+
+### Notification Write Hooks
+
+Notifications are written by service-layer hooks at the same call site as the state change, inside the same transaction when one exists. Triggers and recipients:
+
+| Trigger | Type | Recipients |
+|---|---|---|
+| `assignmentService.createAssignment` (one-time, child_id provided) | `assignment_given` | assignment.child_id |
+| `assignmentService.approveAssignment` | `chore_approved` | assignment.child_id |
+| `assignmentService.rejectAssignment` | `chore_rejected` | assignment.child_id |
+| `rewardService.approveReward` | `reward_approved` | reward.created_by |
+| `rewardService.rejectReward` | `reward_rejected` | reward.created_by |
+| `rewardService.contributeToReward` (when contribution caps to funded) | `reward_funded` | all contributors + creator-if-child (deduped) |
+| `rewardService.setRewardFunded` | `reward_funded` | all contributors + creator-if-child |
+| `rewardService.updateReward` (auto-flip to funded) | `reward_funded` | all contributors + creator-if-child |
+| `rewardService.cancelReward` | `reward_cancelled` | each refunded contributor |
+| `bugReportService.updateBugReportStatus` (status changed) | `bug_status_changed` | bug.user_id |
+
+`/auth/login` and `/auth/session` responses include `unseen_notifications: <count>` so the client can render the login badge without a follow-up request.
+
+Daily scheduler runs `pruneOldNotifications`: deletes rows where `seen_at IS NOT NULL AND seen_at < now() - 7 days`.
 
 ---
 
@@ -491,20 +605,7 @@ Thor logout deliberately does not increment `token_version`. Thor auto-logs out 
 
 ## Future Enhancements (Backend)
 
-- **Edit reward info** — `PATCH /rewards/:id`, parent-only. Editable fields: title, description, points_required. No status restrictions — parent can edit at any time regardless of funding state. The parent has decision power, not the app. **TBD:** behavior when `points_required` is lowered below the current contributed total — likely auto-flip reward to `funded` status, but confirm with frontend whether to warn the parent on save.
-- **Refund All (without canceling)** — new action on rewards endpoint. Returns all contributed points to children via transactions but keeps the reward in active status. Contributions can restart from zero.
-- **Set to Funded** — new action on rewards endpoint. Parent manually marks reward as funded. Does NOT refund children's contributed points — they keep their points spent. Moves reward to funded status ready for redemption.
-- **Parent-only reward notes** — new `reward_notes` field or related table. Parent-only visibility. Stores links, purchase notes, price tracking. Future: kiosk link viewer (deferred). **TBD:** single text field vs. structured `reward_notes` table — table allows multi-entry/timestamped notes; field is simpler if parent only needs one running note. Decision drives the frontend UX shape.
-- **Notifications table + login badge** — new `notifications` table (id, user_id, household_id, type, reference_id, seen, created_at). No FK constraints — reference columns only for clean joins and easy pruning. Events that write a notification row: chore approved, chore rejected, reward approved/funded/canceled, one-time assignment given, points awarded/penalized (existing `point_adjustments.seen` remains separate — standalone modal). Login badge endpoint: `SELECT EXISTS(...)` for unseen notifications per user. Scheduler prunes seen rows daily.
-- **In-app bug reports** — new `bug_reports` table (id, reporter_name varchar, reporter_role varchar, description text, status varchar default 'open', created_at). No FK constraints — fully standalone. Endpoints: `POST /bugs` (any authenticated user), `GET /bugs` (parent-only, for developer review), `PATCH /bugs/:id` (parent-only, update status to 'open'/'fixed').
-- **Missed assignments query expansion** — update `getMissedAssignments` to include overdue chores not yet auto-dismissed: add `assigned + assigned_at < today + started_at IS NULL` alongside existing `dismissed + started_at IS NULL`. Closes the one-day visibility gap where parents can't see missed chores until the scheduler auto-dismisses them. Frontend-only impact — parent History Missed Chores column shows missed chores a day earlier. No schema changes.
-- **Child dashboard stats** — new query or endpoint for 7-day performance stats: completed count, missed count, points earned, points missed. Data exists in assignments + transactions tables — needs time-bucketed aggregation.
-- **Pool chore recurrence + inline status + team flag** — scheduler support for recurring pool assignments. Dedup rule for non-team chores: if any unassigned instance of that chore exists in the pool, skip scheduling (no stacking). Once claimed, assignment attaches to the child and tracking begins. One-time pool assignments persist until claimed or parent clears them. Schema: `chore_schedules.child_id` becomes nullable to support pool-targeted schedules (currently `NOT NULL`); new `team_chore` boolean column on `chores`. Pool + child recurrence can coexist on the same chore. **Team chore behavior:** when `chores.team_chore = true`, `claimAssignment` inserts a NEW assignment row for the claimant (status `assigned`, child_id set) instead of updating the pool entry — pool entry stays available for siblings. Each claim is an independent assignment with its own submit/approve lifecycle. Points unchanged on chore — chore form labels "X pts each" in the UI when flag is on. Pool entry expires/regenerates with the recurrence period (daily team chore replaces every morning). No backend dedup against same child claiming the same team chore multiple times — parent approval catches it.
-- **Funded rewards in parent dashboard payload** — add `fundedRewards` to `getParentDashboard` response. Query: `rewards WHERE status = 'funded' AND household_id = ?`, joined with `reward_contributions` + `users` to surface contributing children (id, name, avatar) for the stacked-avatar UI. Mirrors the existing `pendingRewards` query shape in [`dashboardService.js`](../src/services/dashboardService.js) — same join pattern, just a different status filter and an extra join for contributors. No new endpoint or schema changes needed. Frontend usage: parent dashboard Requests panel surfaces these as ready-to-redeem cards (see thor-reference.md).
-- **Child-focused overlay stats** — per-child 7-day stats (completed/missed counts, points earned/missed, streak). Reuses the same aggregation as child dashboard stats but filtered to a single child. May extend the existing child dashboard stats endpoint with a `child_id` param or be a separate query.
-- **Child recall refund request** — `PATCH /rewards/:id/cancel-refund`, child-only. Returns reward from refund-pending back to its prior state. Reverses the refund request without parent involvement.
 - **Push notifications** — webhook or SSE endpoint for real-time chore approval/rejection alerts
-- **Child leaderboard endpoint** — new aggregation endpoint (e.g., `GET /dashboard/leaderboard`) that queries the `transactions` table to return points earned per child for today, yesterday, this week, and this month. Data already exists — no new tables needed, just time-bucketed aggregation queries
 - **Gamification — badges & achievements** — new schema (`badges`, `child_badges`), logic to check/award badges on chore completion (e.g., first chore, 10th chore, 7-day streak). Parked until leaderboard ships and engagement is evaluated. Start with simple count-based badges before tackling streaks or time-based achievements
 - **Database table indexing** — audit Knex migrations for missing indexes. Postgres does not auto-index foreign keys. Likely candidates: `chore_assignments.chore_id` (JOIN target for household scoping), `chore_assignments.status` (filtered on nearly every query), `chores.household_id` (filtered on every scoped query). Not urgent at current scale but sound practice — first optimization lever if query performance degrades as assignment history grows
 - **MFA for parent accounts** — optional second factor

@@ -1,5 +1,25 @@
 const cron = require('node-cron')
 const knex = require('./db')
+const notificationService = require('./services/notificationService')
+const { periodEndFor } = require('./services/scheduleService')
+
+const pruneOldNotifications = async () => {
+  const deleted = await notificationService.pruneSeen(7)
+  if (deleted > 0) console.log(`[scheduler] Pruned ${deleted} seen notification(s) older than 7 days`)
+}
+
+const expirePoolAssignments = async () => {
+  const expired = await knex('chore_assignments')
+    .where({ status: 'unassigned' })
+    .whereNotNull('expires_at')
+    .where('expires_at', '<', knex.fn.now())
+    .update({ status: 'dismissed', completed_at: knex.fn.now() })
+    .returning('id')
+
+  if (expired.length > 0) {
+    console.log(`[scheduler] Expired ${expired.length} unclaimed pool assignment(s)`)
+  }
+}
 
 const dismissMissedAssignments = async () => {
   const yesterday = new Date()
@@ -58,6 +78,26 @@ const runScheduler = async () => {
       continue
     }
 
+    const isPool = schedule.child_id == null
+
+    if (isPool) {
+      const existingPool = await knex('chore_assignments')
+        .where({ chore_id: schedule.chore_id, child_id: null, status: 'unassigned' })
+        .where(qb => qb.whereNull('expires_at').orWhere('expires_at', '>=', knex.fn.now()))
+        .first()
+      if (existingPool) continue
+
+      await knex('chore_assignments').insert({
+        chore_id: schedule.chore_id,
+        child_id: null,
+        status: 'unassigned',
+        expires_at: periodEndFor(schedule.frequency, now)
+      })
+      await knex('chore_schedules').where({ id: schedule.id }).update({ last_generated_at: knex.fn.now() })
+      console.log(`[scheduler] Created pool assignment: chore ${schedule.chore_id}`)
+      continue
+    }
+
     const existing = await knex('chore_assignments')
       .where({ chore_id: schedule.chore_id, child_id: schedule.child_id })
       .where('assigned_at', '>=', periodStart)
@@ -80,7 +120,9 @@ cron.schedule('0 3 * * *', async () => {
   console.log('[scheduler] Running daily chore schedule check...')
   try {
     await dismissMissedAssignments()
+    await expirePoolAssignments()
     await runScheduler()
+    await pruneOldNotifications()
     console.log('[scheduler] Complete.')
   } catch (err) {
     console.error('[scheduler] Error:', err.message)
@@ -89,4 +131,4 @@ cron.schedule('0 3 * * *', async () => {
 
 console.log('[scheduler] Initialized — runs daily at 3:00am')
 
-module.exports = { runScheduler, dismissMissedAssignments }
+module.exports = { runScheduler, dismissMissedAssignments, pruneOldNotifications, expirePoolAssignments }

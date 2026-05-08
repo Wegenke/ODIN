@@ -70,6 +70,30 @@ const rejectReward = async (req,res) => {
   }
 }
 
+const setRewardFunded = async (req, res) => {
+  try {
+    const { household_id } = req.user
+    const { id } = req.params
+    const result = await rewardService.setRewardFunded(id, household_id)
+    return res.status(200).json(result)
+  } catch (err) {
+    if (err.status) return res.status(err.status).json({message: err.message})
+    return res.status(500).json({message: 'Server error'})
+  }
+}
+
+const refundAllContributions = async (req, res) => {
+  try {
+    const { household_id } = req.user
+    const { id } = req.params
+    const result = await rewardService.refundAllContributions(id, household_id)
+    return res.status(200).json(result)
+  } catch (err) {
+    if (err.status) return res.status(err.status).json({message: err.message})
+    return res.status(500).json({message: 'Server error'})
+  }
+}
+
 const contributeToReward = async (req,res) => {
   try{
     const household_id = req.user.household_id
@@ -168,6 +192,19 @@ const rejectContributionRefund = async (req,res) => {
   }
 }
 
+const cancelContributionRefund = async (req, res) => {
+  try {
+    const household_id = req.user.household_id
+    const child_id = req.user.id
+    const { id } = req.params
+    const result = await rewardService.cancelContributionRefund(id, child_id, household_id)
+    return res.status(200).json(result)
+  } catch (err) {
+    if (err.status) return res.status(err.status).json({message: err.message})
+    return res.status(500).json({message: 'Server error'})
+  }
+}
+
 const getRefundRequests = async (req,res) => {
   try{
     const {household_id} = req.user
@@ -179,4 +216,4 @@ const getRefundRequests = async (req,res) => {
   }
 }
 
-module.exports = { getRewards, getRewardById, createReward, updateReward, contributeToReward, getRewardProgress, redeemReward, approveReward, rejectReward, archiveReward, cancelReward, requestContributionRefund, approveContributionRefund, rejectContributionRefund, getRefundRequests}
+module.exports = { getRewards, getRewardById, createReward, updateReward, contributeToReward, getRewardProgress, redeemReward, approveReward, rejectReward, setRewardFunded, archiveReward, cancelReward, refundAllContributions, requestContributionRefund, approveContributionRefund, rejectContributionRefund, cancelContributionRefund, getRefundRequests}

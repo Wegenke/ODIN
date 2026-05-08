@@ -2,14 +2,35 @@ const knex = require('../db')
 
 const TERMINAL_STATES = ['approved', 'dismissed', 'canceled']
 
+const periodEndFor = (frequency, now = new Date()) => {
+  if (frequency === 'daily') {
+    const end = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+    end.setDate(end.getDate() + 1)
+    return end
+  }
+  if (frequency === 'weekly') {
+    const end = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+    end.setDate(end.getDate() + (7 - now.getDay()))
+    return end
+  }
+  if (frequency === 'monthly') {
+    return new Date(now.getFullYear(), now.getMonth() + 1, 1)
+  }
+  return null
+}
+
 const createSchedule = async (data, household_id) => {
   const chore = await knex('chores').where({ id: data.chore_id, household_id }).first()
   if (!chore) throw Object.assign(new Error('Chore not found'), { status: 404 })
 
-  const child = await knex('users').where({ id: data.child_id, household_id }).first()
-  if (!child || child.role !== 'child') throw Object.assign(new Error('User is not a child'), { status: 400 })
+  const isPool = data.child_id == null
 
-  const existingQuery = { chore_id: data.chore_id, child_id: data.child_id, frequency: data.frequency }
+  if (!isPool) {
+    const child = await knex('users').where({ id: data.child_id, household_id }).first()
+    if (!child || child.role !== 'child') throw Object.assign(new Error('User is not a child'), { status: 400 })
+  }
+
+  const existingQuery = { chore_id: data.chore_id, child_id: isPool ? null : data.child_id, frequency: data.frequency }
   if (data.day_of_week != null) existingQuery.day_of_week = data.day_of_week
   if (data.day_of_month != null) existingQuery.day_of_month = data.day_of_month
   const existing = await knex('chore_schedules').where(existingQuery).first()
@@ -18,7 +39,7 @@ const createSchedule = async (data, household_id) => {
   const [schedule] = await knex('chore_schedules')
     .insert({
       chore_id: data.chore_id,
-      child_id: data.child_id,
+      child_id: isPool ? null : data.child_id,
       frequency: data.frequency,
       day_of_week: data.day_of_week != null ? data.day_of_week : null,
       day_of_month: data.day_of_month != null ? data.day_of_month : null,
@@ -34,14 +55,25 @@ const createSchedule = async (data, household_id) => {
 
   let assignment = null
   if (firesToday) {
+    const dedupQuery = isPool
+      ? { chore_id: data.chore_id, child_id: null }
+      : { chore_id: data.chore_id, child_id: data.child_id }
     const activeAssignment = await knex('chore_assignments')
-      .where({ chore_id: data.chore_id, child_id: data.child_id })
+      .where(dedupQuery)
       .whereNotIn('status', TERMINAL_STATES)
       .first()
 
     if (!activeAssignment) {
+      const insertRow = isPool
+        ? {
+            chore_id: data.chore_id,
+            child_id: null,
+            status: 'unassigned',
+            expires_at: periodEndFor(data.frequency, now)
+          }
+        : { chore_id: data.chore_id, child_id: data.child_id, status: 'assigned' }
       const [created] = await knex('chore_assignments')
-        .insert({ chore_id: data.chore_id, child_id: data.child_id, status: 'assigned' })
+        .insert(insertRow)
         .returning('*')
       assignment = created
     }
@@ -91,4 +123,4 @@ const deleteSchedule = async (id, household_id) => {
   return schedule
 }
 
-module.exports = { createSchedule, getSchedulesByHousehold, getSchedulesByChore, updateSchedule, deleteSchedule, TERMINAL_STATES }
+module.exports = { createSchedule, getSchedulesByHousehold, getSchedulesByChore, updateSchedule, deleteSchedule, TERMINAL_STATES, periodEndFor }

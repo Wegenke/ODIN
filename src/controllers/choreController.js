@@ -14,9 +14,9 @@ const getChores = async (req,res) => {
 const createChore = async (req,res) => {
   try{
     const {id, household_id} = req.user
-    const {title, points, description, emoji} = req.body
+    const {title, points, description, emoji, team_chore} = req.body
 
-    const chore = await choreService.createChore({created_by:id, household_id, title, points, description, emoji})
+    const chore = await choreService.createChore({created_by:id, household_id, title, points, description, emoji, team_chore})
     return res.status(201).json(chore)
   }catch(err){
     if(err.status) return res.status(err.status).json({message:err.message})

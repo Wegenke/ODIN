@@ -86,7 +86,7 @@ const getTransactionsByChild = async (child_id, household_id, { page = 1, limit 
   }
 
 }
-const getHouseholdTransactions = async (household_id, { page = 1, limit = 10, source, child_id } = {}) => {
+const getHouseholdTransactions = async (household_id, { page = 1, limit = 10, source, child_id, search } = {}) => {
   const offset = (page -1) * limit
   const query = knex('transactions')
     .join('users', 'transactions.child_id', 'users.id')
@@ -117,6 +117,14 @@ const getHouseholdTransactions = async (household_id, { page = 1, limit = 10, so
     else if (sources.length > 1) query.whereIn('transactions.source', sources)
   }
   if (child_id) query.andWhere({ 'transactions.child_id': child_id })
+  if (search && String(search).trim()) {
+    const term = `%${String(search).trim()}%`
+    query.andWhere(qb => {
+      qb.where('chores.title', 'ilike', term)
+        .orWhere('rewards.name', 'ilike', term)
+        .orWhere('point_adjustments.reason', 'ilike', term)
+    })
+  }
 
   const [{ count }] = await query.clone()
     .clearSelect()

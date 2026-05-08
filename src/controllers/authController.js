@@ -1,5 +1,6 @@
 const authService = require('../services/authService')
 const tokenService = require('../services/tokenService')
+const notificationService = require('../services/notificationService')
 
 const getProfiles = async (req,res) => {
   try{
@@ -17,7 +18,8 @@ const login = async (req,res) => {
     const {user_id, pin} = req.body
     const safeUser = await authService.login(user_id, pin)
     req.session.user = safeUser
-    return res.status(200).json(safeUser)
+    const unseen_notifications = await notificationService.getUnseenCount(safeUser.id)
+    return res.status(200).json({ ...safeUser, unseen_notifications })
   }catch(err){
     if(err.status) return res.status(err.status).json({message:err.message})
     return res.status(500).json({message:'Server error'})
@@ -32,7 +34,9 @@ const logout = async (req,res) => {
 
 // Session check (Thor)
 const getSession = async (req,res) => {
-  return req.session.user ? res.status(200).json(req.session.user) : res.status(401).json({message: "Not authenticated"})
+  if (!req.session.user) return res.status(401).json({message: "Not authenticated"})
+  const unseen_notifications = await notificationService.getUnseenCount(req.session.user.id)
+  return res.status(200).json({ ...req.session.user, unseen_notifications })
 }
 
 // JWT-based login (Valkyrie)

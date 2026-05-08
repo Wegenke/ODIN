@@ -2,8 +2,8 @@ const assignmentService = require('../services/assignmentService')
 
 const getAvailableAssignments = async (req,res) => {
   try{
-    const {household_id} = req.user
-    const assignments = await assignmentService.getAvailableAssignments(household_id)
+    const {household_id, id} = req.user
+    const assignments = await assignmentService.getAvailableAssignments(household_id, id)
     return res.status(200).json(assignments)
   }catch(err){
     if(err.status) return res.status(err.status).json({message:err.message})
@@ -295,11 +295,12 @@ const unassignAssignment = async (req,res) =>{
 const getMissedAssignments = async (req, res) => {
   try {
     const { household_id } = req.user
-    const { page, limit, child_id } = req.query
+    const { page, limit, child_id, search } = req.query
     const result = await assignmentService.getMissedAssignments(household_id, {
       page: Number(page) || 1,
       limit: Number(limit) || 10,
-      ...(child_id ? { child_id: Number(child_id) } : {})
+      ...(child_id ? { child_id: Number(child_id) } : {}),
+      ...(search ? { search } : {})
     })
     return res.status(200).json(result)
   } catch (err) {

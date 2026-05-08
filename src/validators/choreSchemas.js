@@ -4,14 +4,16 @@ const choreSchema = z.object({
   title: z.string(),
   points: z.number().int().nonnegative().refine(v => v % 10 === 0, 'Must be a multiple of 10'),
   description: z.string().optional(),
-  emoji: z.string().min(1).default('🦺')
+  emoji: z.string().min(1).default('🦺'),
+  team_chore: z.boolean().optional()
 })
 
 const updateChoreSchema = z.object({
   title: z.string(),
   points: z.number().int().nonnegative().refine(v => v % 10 === 0, 'Must be a multiple of 10'),
   description: z.string(),
-  emoji:z.string().min(1)
+  emoji:z.string().min(1),
+  team_chore: z.boolean()
 }).partial()
 
 module.exports = {choreSchema, updateChoreSchema}

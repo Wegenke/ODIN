@@ -2,7 +2,7 @@ const z = require('zod')
 
 const createScheduleSchema = z.object({
   chore_id: z.number().int().positive(),
-  child_id: z.number().int().positive(),
+  child_id: z.number().int().positive().nullable().optional(),
   frequency: z.enum(['daily', 'weekly', 'monthly']),
   day_of_week: z.number().int().min(0).max(6).optional(),
   day_of_month: z.number().int().min(1).max(28).optional()

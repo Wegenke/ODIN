@@ -1,4 +1,5 @@
 const knex = require('../db')
+const notificationService = require('./notificationService')
 
 const getAssignments = async (household_id) => {
   return await knex('chore_assignments')
@@ -15,6 +16,7 @@ const getAssignments = async (household_id) => {
       'chores.title as chore_title',
       'chores.points',
       'chores.emoji',
+      'chores.team_chore',
       'users.name as child_name',
       'users.avatar as child_avatar'
     )
@@ -34,6 +36,7 @@ const getMyAssignments = async (child_id) => {
     'chore_assignments.completed_at',
     'chores.title as chore_title',
     'chores.points',
+    'chores.team_chore',
     'users.name as child_name',
     'users.avatar as child_avatar'
   )
@@ -41,12 +44,23 @@ const getMyAssignments = async (child_id) => {
   .orderBy('id')
 }
 
-const getAvailableAssignments = async (household_id) => {
+const getAvailableAssignments = async (household_id, child_id) => {
   return await knex('chore_assignments')
     .leftJoin('chores', 'chore_assignments.chore_id', 'chores.id')
     .where({
       'chore_assignments.status':'unassigned',
       'chores.household_id': household_id
+    })
+    .whereNotExists(function () {
+      // Hide team-chore pool entries this child has already actively claimed
+      // from (mirrors the duplicate-guard in claimAssignment).
+      this.select('*')
+        .from('chore_assignments as ca2')
+        .whereRaw('ca2.chore_id = chore_assignments.chore_id')
+        .where('ca2.child_id', child_id)
+        .whereIn('ca2.status', ACTIVE_CLAIM_STATES)
+        .whereRaw('ca2.assigned_at >= chore_assignments.assigned_at')
+        .where('chores.team_chore', true)
     })
     .select(
       'chore_assignments.id',
@@ -55,7 +69,8 @@ const getAvailableAssignments = async (household_id) => {
       'chores.title as chore_title',
       'chores.emoji',
       'chores.points',
-      'chores.description'
+      'chores.description',
+      'chores.team_chore'
     )
     .orderBy('chore_assignments.id')
 }
@@ -75,8 +90,20 @@ const createAssignment = async (data, household_id) => {
   const [assignment] = await knex('chore_assignments')
     .insert({...data, status})
     .returning('*')
+
+  if (data.child_id) {
+    await notificationService.create({
+      household_id,
+      user_id: data.child_id,
+      type: 'assignment_given',
+      reference_id: assignment.id
+    })
+  }
+
   return assignment
 }
+
+const ACTIVE_CLAIM_STATES = ['assigned', 'in_progress', 'paused', 'parent_paused', 'submitted']
 
 const claimAssignment = async (id, child_id) => {
   return await knex.transaction(async trx =>{
@@ -87,6 +114,27 @@ const claimAssignment = async (id, child_id) => {
 
     if(!assignment) throw Object.assign(new Error('Assignment not found'), {status: 404})
     if(assignment.status !== 'unassigned') throw Object.assign(new Error("Assignment is no longer available"), {status: 400})
+
+    const chore = await trx('chores').where({ id: assignment.chore_id }).first()
+
+    if (chore?.team_chore) {
+      const existing = await trx('chore_assignments')
+        .where({ chore_id: assignment.chore_id, child_id })
+        .whereIn('status', ACTIVE_CLAIM_STATES)
+        .where('assigned_at', '>=', assignment.assigned_at)
+        .first()
+      if (existing) throw Object.assign(new Error('Already claimed this team chore'), {status: 400})
+
+      const [team_claim] = await trx('chore_assignments')
+        .insert({
+          chore_id: assignment.chore_id,
+          child_id,
+          status: 'assigned',
+          assigned_at: knex.fn.now()
+        })
+        .returning('*')
+      return team_claim
+    }
 
     const [claimed_assignment] = await trx('chore_assignments')
       .where({id})
@@ -175,6 +223,13 @@ const approveAssignment = async (id, reviewer_id, household_id) => {
       })
       .returning('*')
 
+    await notificationService.create({
+      household_id,
+      user_id: assignment.child_id,
+      type: 'chore_approved',
+      reference_id: assignment.id
+    }, trx)
+
       return {updated_assignment, transaction}
   })
 }
@@ -212,6 +267,13 @@ const rejectAssignment = async (id, reviewer_id, household_id, comment) => {
 
     assignment_comment = result[0]
   }
+
+  await notificationService.create({
+    household_id,
+    user_id: assignment.child_id,
+    type: 'chore_rejected',
+    reference_id: assignment.id
+  })
 
   return {updated_assignment, assignment_comment}
 }
@@ -720,21 +782,36 @@ const unassignAssignment = async (id, reviewer_id, household_id, comment) => {
   return {updated_assignment, assignment_comment}
 }
 
-const getMissedAssignments = async (household_id, { page = 1, limit = 10, child_id } = {}) => {
+const getMissedAssignments = async (household_id, { page = 1, limit = 10, child_id, search } = {}) => {
   const offset = (page - 1) * limit
+  const startOfToday = new Date()
+  startOfToday.setHours(0, 0, 0, 0)
+
   const query = knex('chore_assignments')
     .join('chores', 'chore_assignments.chore_id', 'chores.id')
     .leftJoin('users', 'chore_assignments.child_id', 'users.id')
-    .where({ 'chores.household_id': household_id, 'chore_assignments.status': 'dismissed' })
+    .where({ 'chores.household_id': household_id })
     .whereNull('chore_assignments.started_at')
+    .where(qb => {
+      qb.where('chore_assignments.status', 'dismissed')
+        .orWhere(inner => {
+          inner.where('chore_assignments.status', 'assigned')
+               .where('chore_assignments.assigned_at', '<', startOfToday)
+        })
+    })
   if (child_id) query.andWhere({ 'chore_assignments.child_id': child_id })
+  if (search && String(search).trim()) {
+    query.andWhere('chores.title', 'ilike', `%${String(search).trim()}%`)
+  }
   query.select(
       'chore_assignments.id',
+      'chore_assignments.status',
       'chore_assignments.assigned_at',
       'chore_assignments.completed_at',
       'chores.title as chore_title',
       'chores.emoji',
       'chores.points',
+      'chores.team_chore',
       'users.name as child_name',
       'users.avatar as child_avatar'
     )
@@ -743,7 +820,7 @@ const getMissedAssignments = async (household_id, { page = 1, limit = 10, child_
   const total = parseInt(count)
 
   const data = await query
-    .orderBy('chore_assignments.completed_at', 'desc')
+    .orderBy('chore_assignments.assigned_at', 'desc')
     .limit(limit)
     .offset(offset)
 

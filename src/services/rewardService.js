@@ -1,4 +1,17 @@
 const knex = require('../db')
+const notificationService = require('./notificationService')
+
+const notifyFunded = async (reward, trx) => {
+  const recipients = await notificationService.getRewardFundedRecipients(reward.id, trx)
+  if (recipients.length === 0) return
+  const rows = recipients.map(user_id => ({
+    household_id: reward.household_id,
+    user_id,
+    type: 'reward_funded',
+    reference_id: reward.id
+  }))
+  await notificationService.createMany(rows, trx)
+}
 
 const getRewards = async (household_id, {status, sort} = {}) => {
   const query = knex('rewards')
@@ -55,14 +68,40 @@ const updateReward = async (id, household_id, data) => {
 
   if (Object.keys(updateFields).length === 0) throw Object.assign(new Error('No valid fields to update'), {status: 400})
 
-  const [updatedReward] = await knex('rewards')
-    .where({ id, household_id })
-    .update(updateFields)
-    .returning('*')
+  return await knex.transaction(async trx => {
+    const reward = await trx('rewards')
+      .where({ id, household_id })
+      .forUpdate()
+      .first()
 
-  if (!updatedReward) throw Object.assign(new Error('Reward not found'), {status: 404})
+    if (!reward) throw Object.assign(new Error('Reward not found'), {status: 404})
 
-  return updatedReward
+    await trx('rewards')
+      .where({ id, household_id })
+      .update(updateFields)
+
+    if (updateFields.points_required !== undefined && (reward.status === 'active' || reward.status === 'funded')) {
+      const { sum } = await trx('reward_contributions')
+        .where({ reward_id: id })
+        .sum('points as sum')
+        .first()
+      const contributed = parseInt(sum) || 0
+      const newStatus = contributed >= updateFields.points_required ? 'funded' : 'active'
+
+      if (newStatus !== reward.status) {
+        await trx('rewards')
+          .where({ id, household_id })
+          .update({ status: newStatus })
+        if (newStatus === 'funded') {
+          await notifyFunded({ id, household_id }, trx)
+        }
+      }
+    }
+
+    return await trx('rewards')
+      .where({ id, household_id })
+      .first()
+  })
 }
 
 const approveReward = async (id, household_id, points_required) => {
@@ -81,6 +120,13 @@ const approveReward = async (id, household_id, points_required) => {
     })
     .returning('*')
 
+  await notificationService.create({
+    household_id,
+    user_id: reward.created_by,
+    type: 'reward_approved',
+    reference_id: reward.id
+  })
+
   return updatedReward
 }
 
@@ -97,7 +143,35 @@ const rejectReward = async (id, household_id) => {
     .update({ status: 'archived' })
     .returning('*')
 
+  await notificationService.create({
+    household_id,
+    user_id: reward.created_by,
+    type: 'reward_rejected',
+    reference_id: reward.id
+  })
+
   return updatedReward
+}
+
+const setRewardFunded = async (id, household_id) => {
+  return await knex.transaction(async trx => {
+    const reward = await trx('rewards')
+      .where({ id, household_id })
+      .forUpdate()
+      .first()
+
+    if (!reward) throw Object.assign(new Error('Reward not found'), {status: 404})
+    if (reward.status !== 'active') throw Object.assign(new Error('Reward not active'), {status: 400})
+
+    const [updatedReward] = await trx('rewards')
+      .where({ id, household_id })
+      .update({ status: 'funded' })
+      .returning('*')
+
+    await notifyFunded(updatedReward, trx)
+
+    return updatedReward
+  })
 }
 
 const contributeToReward = async (reward_id, child_id, household_id, requested_points) => {
@@ -151,6 +225,7 @@ const contributeToReward = async (reward_id, child_id, household_id, requested_p
       await trx('rewards')
         .where({ id: reward_id })
         .update({ status: 'funded' })
+      await notifyFunded({ id: reward_id, household_id }, trx)
     }
     return contribution
   })
@@ -224,26 +299,86 @@ const cancelReward = async (id, household_id) => {
     const contributions = await trx('reward_contributions')
       .where({ reward_id: id })
 
-    for (const contribution of contributions) {
-      await trx('transactions')
-        .insert({
-          child_id: contribution.child_id,
-          amount: contribution.points,
-          source: 'reward_refund',
-          reference_id: id
-        })
-
-      await trx('users')
-        .where({ id: contribution.child_id })
-        .increment('points_balance', contribution.points)
+    const sumByChild = new Map()
+    for (const c of contributions) {
+      sumByChild.set(c.child_id, (sumByChild.get(c.child_id) || 0) + c.points)
     }
+
+    for (const [child_id, points] of sumByChild) {
+      await trx('transactions').insert({
+        child_id,
+        amount: points,
+        source: 'reward_refund',
+        reference_id: id
+      })
+      await trx('users')
+        .where({ id: child_id })
+        .increment('points_balance', points)
+    }
+
+    await trx('reward_contributions').where({ reward_id: id }).del()
 
     const [updatedReward] = await trx('rewards')
       .where({ id, household_id })
       .update({ status: 'archived' })
       .returning('*')
 
+    if (sumByChild.size > 0) {
+      const rows = Array.from(sumByChild.keys()).map(user_id => ({
+        household_id,
+        user_id,
+        type: 'reward_cancelled',
+        reference_id: id
+      }))
+      await notificationService.createMany(rows, trx)
+    }
+
     return updatedReward
+  })
+}
+
+const refundAllContributions = async (id, household_id) => {
+  return await knex.transaction(async trx => {
+    const reward = await trx('rewards')
+      .where({ id, household_id })
+      .forUpdate()
+      .first()
+
+    if (!reward) throw Object.assign(new Error('Reward not found'), {status: 404})
+    if (reward.status !== 'active' && reward.status !== 'funded') {
+      throw Object.assign(new Error('Reward not eligible for refund'), {status: 400})
+    }
+
+    const contributions = await trx('reward_contributions')
+      .where({ reward_id: id })
+
+    const sumByChild = new Map()
+    for (const c of contributions) {
+      sumByChild.set(c.child_id, (sumByChild.get(c.child_id) || 0) + c.points)
+    }
+
+    let totalRefunded = 0
+    for (const [child_id, points] of sumByChild) {
+      await trx('transactions').insert({
+        child_id,
+        amount: points,
+        source: 'reward_refund',
+        reference_id: id
+      })
+      await trx('users')
+        .where({ id: child_id })
+        .increment('points_balance', points)
+      totalRefunded += points
+    }
+
+    await trx('reward_contributions').where({ reward_id: id }).del()
+
+    const [updatedReward] = await trx('rewards')
+      .where({ id, household_id })
+      .update({ status: 'active' })
+      .returning('*')
+
+    return { reward: updatedReward, refunded_points: totalRefunded, refunded_children: sumByChild.size }
   })
 }
 
@@ -314,6 +449,13 @@ const approveContributionRefund = async (reward_id, child_id, household_id) => {
         .update({ status: newStatus})
     }
 
+    await notificationService.create({
+      household_id,
+      user_id: child_id,
+      type: 'refund_approved',
+      reference_id: reward_id
+    }, trx)
+
     return { refunded_points: totalRefund, reward_status: newStatus }
   })
 }
@@ -331,6 +473,30 @@ const rejectContributionRefund = async (reward_id, child_id, household_id) => {
     .returning('*')
 
   if (updated.length === 0) throw Object.assign(new Error('No refund to reject'), {status: 400})
+
+  await notificationService.create({
+    household_id,
+    user_id: child_id,
+    type: 'refund_rejected',
+    reference_id: reward_id
+  })
+
+  return updated
+}
+
+const cancelContributionRefund = async (reward_id, child_id, household_id) => {
+  const reward = await knex('rewards')
+    .where({ id: reward_id, household_id })
+    .first()
+
+  if (!reward) throw Object.assign(new Error('Reward not found'), {status: 404})
+
+  const updated = await knex('reward_contributions')
+    .where({ reward_id, child_id, refund_requested: true })
+    .update({ refund_requested: false })
+    .returning('*')
+
+  if (updated.length === 0) throw Object.assign(new Error('No refund to cancel'), {status: 400})
 
   return updated
 }
@@ -356,4 +522,4 @@ const getRefundRequests = async (household_id) => {
     .orderBy('reward_contributions.created_at', 'asc')
 }
 
-module.exports = { getRewards, getRewardById, createReward, updateReward, contributeToReward, getRewardProgress, redeemReward, approveReward, rejectReward, archiveReward, cancelReward, requestContributionRefund, approveContributionRefund, rejectContributionRefund, getRefundRequests}
+module.exports = { getRewards, getRewardById, createReward, updateReward, contributeToReward, getRewardProgress, redeemReward, approveReward, rejectReward, setRewardFunded, archiveReward, cancelReward, refundAllContributions, requestContributionRefund, approveContributionRefund, rejectContributionRefund, cancelContributionRefund, getRefundRequests}

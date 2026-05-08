@@ -17,6 +17,9 @@ const assignmentRouter = require('./routes/assignments')
 const rewardRouter = require('./routes/rewards')
 const transactionRouter = require('./routes/transactions')
 const dashboardRouter = require('./routes/dashboards')
+const bugRouter = require('./routes/bugs')
+const notificationRouter = require('./routes/notifications')
+const rewardNoteRouter = require('./routes/rewardNotes')
 
 const validate = require('./middleware/validate')
 const { setupSchema } = require('./validators/setupSchemas')
@@ -67,6 +70,9 @@ app.use('/dashboard', dashboardRouter)
 app.use('/schedules', scheduleRouter)
 app.use('/parent-tasks', parentTaskRouter)
 app.use('/adjustments', adjustmentRouter)
+app.use('/bugs', bugRouter)
+app.use('/notifications', notificationRouter)
+app.use('/reward-notes', rewardNoteRouter)
 
 app.get('/health', async (req, res) => {
   try{
